@@ -1,25 +1,32 @@
-// Import the Express app instance
-// app.js contains all middleware and routes
-const app = require("./app");
-
-// Import MongoDB connection function
-// This function connects Node.js to MongoDB using Mongoose
-const connectDB = require("./config/db");
-
-// Load environment variables from .env file into process.env
-// This MUST be done before accessing process.env.MONGO_URI
 require("dotenv").config();
 
-// Establish database connection BEFORE starting the server
-// This is critical because the app should not run without DB access
-connectDB(); // ⬅️ CRITICAL LINE
+const app = require("./app");
+const connectDB = require("./config/db");
 
-// Define the port on which the server will run
-// This is where the backend listens for incoming requests
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// Start the server and listen for incoming HTTP requests
-// This runs only after MongoDB is connected successfully
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const validateEnv = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("Missing JWT_SECRET. Add it to the backend .env file.");
+  }
+};
+
+const startServer = async () => {
+  try {
+    console.log("Starting backend startup sequence...");
+    console.log("JWT_SECRET:", process.env.JWT_SECRET);
+    validateEnv();
+    console.log("Calling connectDB()...");
+    await connectDB();
+    console.log("Database connected. Starting Express server...");
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed:", error.message || error);
+    process.exit(1);
+  }
+};
+
+startServer();

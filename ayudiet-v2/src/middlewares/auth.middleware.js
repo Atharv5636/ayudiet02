@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/ApiError");
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 
 // JWT authentication middleware
 // This middleware protects routes by verifying JWT tokens
@@ -18,7 +19,7 @@ const authMiddleware = (req, res, next) => {
     const token = authHeader.split(" ")[1];
 
     // 4. Verify token using JWT secret
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     // 5. Attach decoded user info to request object
     // This allows controllers to know who the logged-in user is

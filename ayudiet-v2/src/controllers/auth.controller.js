@@ -44,6 +44,7 @@ const signup = async (req, res, next) => {
 };
 
 const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 
 // LOGIN CONTROLLER
 const login = async (req, res, next) => {
@@ -74,7 +75,7 @@ const login = async (req, res, next) => {
     // 4. Generate JWT token (proof of login)
     const token = jwt.sign(
       { id: doctor._id },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: "7d" }
     );
 
