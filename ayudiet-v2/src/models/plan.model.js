@@ -95,6 +95,11 @@ const planSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+
+    isMock: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

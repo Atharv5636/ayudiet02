@@ -35,8 +35,17 @@ function Dashboard() {
   const [selectedActivePlan, setSelectedActivePlan] = useState(null);
   const [pendingPlans, setPendingPlans] = useState([]);
   const [activePlans, setActivePlans] = useState([]);
+  const [showMockData, setShowMockData] = useState(true);
   const [appliedPlans, setAppliedPlans] = useState({});
   const [loadingPlans, setLoadingPlans] = useState({});
+
+  const filteredPlans = useMemo(() => {
+    if (showMockData) return activePlans;
+
+    return activePlans.filter(
+      (plan) => !(plan?.isMock || plan?.patient?.isMock)
+    );
+  }, [activePlans, showMockData]);
 
   const getPlanAnalysis = (entry) =>
     entry?.analysis ||
@@ -85,7 +94,7 @@ function Dashboard() {
     "No expected impact available.";
 
   const getLatestPlanForPatient = (patient) =>
-    activePlans.find((plan) => {
+    filteredPlans.find((plan) => {
       const planPatientId =
         typeof plan?.patient === "object" ? plan?.patient?._id : plan?.patient;
       return planPatientId === patient._id;
@@ -235,11 +244,11 @@ function Dashboard() {
   }));
 
   const plansWithScore = useMemo(() => {
-    return activePlans.map((plan) => ({
+    return filteredPlans.map((plan) => ({
       ...plan,
       attentionScore: getAttentionScore(plan),
     }));
-  }, [activePlans]);
+  }, [filteredPlans]);
 
   const patientsNeedingAttention = plansWithScore.filter(
     (plan) => plan.attentionScore >= 5
@@ -255,16 +264,14 @@ function Dashboard() {
     return issue.toLowerCase().includes("adherence");
   }).length;
 
+  const lowEnergyCases = plansWithScore.filter((plan) => {
+    const issue = plan.analysis?.primaryIssue || "";
+    return issue.toLowerCase().includes("energy");
+  }).length;
+
   const criticalPatients = plansWithScore
     .filter((plan) => plan.attentionScore >= 5)
     .slice(0, 3);
-
-  console.log({
-    totalPlans: activePlans.length,
-    patientsNeedingAttention,
-    decliningPlans,
-    lowAdherenceCases,
-  });
 
   const topCriticalPatients = [...enrichedPatients]
     .filter((patient) => needsAttention(patient))
@@ -307,9 +314,11 @@ function Dashboard() {
     })
     .slice(0, 3);
 
-  const sortedActivePlans = [...plansWithScore].sort(
-    (a, b) => b.attentionScore - a.attentionScore
-  );
+  const sortedActivePlans = useMemo(() => {
+    return [...plansWithScore].sort(
+      (a, b) => b.attentionScore - a.attentionScore
+    );
+  }, [plansWithScore]);
 
   const nextAgendaId =
     agenda.find((item) => item.status !== "completed")?.id || null;
@@ -490,6 +499,12 @@ function Dashboard() {
           <p className="text-neutral-400 mt-1">
             Review decision signals and act on patients who need support
           </p>
+          <button
+            onClick={() => setShowMockData((prev) => !prev)}
+            className="mt-2 text-xs px-2 py-1 rounded bg-neutral-700 text-white"
+          >
+            {showMockData ? "Hide Mock Data" : "Show Mock Data"}
+          </button>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
@@ -625,7 +640,6 @@ function Dashboard() {
           ) : (
             <div className="space-y-4">
               {sortedActivePlans.map((plan) => {
-                console.log("Active plan:", plan);
                 const planId = String(plan?._id);
                 const trend =
                   plan.analysis?.trend ??

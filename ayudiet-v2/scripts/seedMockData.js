@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+require("dotenv").config();
 
 const connectDB = require("../src/config/db");
 const Doctor = require("../src/models/doctor.model");
@@ -7,7 +8,17 @@ const Plan = require("../src/models/plan.model");
 const ProgressLog = require("../src/models/progressLog.model");
 const { modifyPlanBasedOnProgress } = require("../src/services/adaptivePlanService");
 
-const SEED_DOCTOR_EMAIL = "seed.doctor@ayudiet.local";
+const doctorEmailArg = process.argv.find((arg) =>
+  arg.startsWith("--doctorEmail=")
+);
+const doctorEmailFromArg = doctorEmailArg
+  ? doctorEmailArg.split("=")[1]?.trim()
+  : "";
+const DOCTOR_EMAIL =
+  doctorEmailFromArg ||
+  process.env.SEED_DOCTOR_EMAIL ||
+  process.env.DOCTOR_EMAIL ||
+  "drsharma@gmail.com";
 
 const MOCK_PATIENTS = [
   {
@@ -168,6 +179,7 @@ const buildProgressLogs = ({ patientId, planId, doctorId, baseWeight, caseType, 
       patient: patientId,
       plan: planId,
       doctor: doctorId,
+      isMock: true,
       weight: Number(weights[index].toFixed(1)),
       adherence: adherenceValue,
       energyLevel: energy[index],
@@ -183,25 +195,34 @@ const main = async () => {
   await connectDB();
 
   try {
-    const doctor =
-      (await Doctor.findOne({ email: SEED_DOCTOR_EMAIL })) ||
-      (await Doctor.create({
-        name: "Seed Doctor",
-        email: SEED_DOCTOR_EMAIL,
-        password: "seed-password",
-      }));
+    const doctor = await Doctor.findOne({
+      email: DOCTOR_EMAIL,
+    });
 
-    const patientNames = MOCK_PATIENTS.map((item) => item.name);
+    if (!doctor) {
+      throw new Error(
+        `Doctor not found for email "${DOCTOR_EMAIL}". Login with this account first or pass --doctorEmail=<email>.`
+      );
+    }
+
+    console.log(`Seeding mock data for doctor: ${DOCTOR_EMAIL}`);
+
     const existingPatients = await Patient.find({
-      name: { $in: patientNames },
       doctor: doctor._id,
+      isMock: true,
     }).select("_id");
     const existingPatientIds = existingPatients.map((patient) => patient._id);
 
     if (existingPatientIds.length) {
-      await ProgressLog.deleteMany({ patient: { $in: existingPatientIds } });
-      await Plan.deleteMany({ patient: { $in: existingPatientIds } });
-      await Patient.deleteMany({ _id: { $in: existingPatientIds } });
+      await ProgressLog.deleteMany({
+        patient: { $in: existingPatientIds },
+      });
+      await Plan.deleteMany({
+        patient: { $in: existingPatientIds },
+      });
+      await Patient.deleteMany({
+        _id: { $in: existingPatientIds },
+      });
     }
 
     const now = new Date();
@@ -220,6 +241,7 @@ const main = async () => {
         gender: patientSeed.gender,
         weight: patientSeed.baseWeight,
         doctor: doctor._id,
+        isMock: true,
         dietType: "vegetarian",
         activityLevel: 3,
         preferences: ["low oil", "home cooked"],
@@ -231,6 +253,7 @@ const main = async () => {
       const plan = await Plan.create({
         doctor: doctor._id,
         patient: patient._id,
+        isMock: true,
         title: `${patientSeed.name} ${goal} plan`,
         doshaType,
         meals: buildMeals(goal),

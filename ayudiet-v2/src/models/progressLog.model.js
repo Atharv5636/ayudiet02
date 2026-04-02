@@ -40,6 +40,10 @@ const progressLogSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    isMock: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
