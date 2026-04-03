@@ -11,6 +11,7 @@ const {
   approvePlan,
   updatePlan,
   rejectPlan,
+  applyPlanAdjustments,
 } = require("../controllers/plan.controller");
 
 const router = express.Router();
@@ -26,5 +27,6 @@ router.post("/", createPlan);
 router.put("/:id", authMiddleware, updatePlan);
 router.patch("/:id/approve", approvePlan);
 router.patch("/:id/reject", rejectPlan);
+router.patch("/:id/apply-adjustments", applyPlanAdjustments);
 
 module.exports = router;

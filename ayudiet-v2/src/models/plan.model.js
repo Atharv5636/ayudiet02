@@ -96,6 +96,15 @@ const planSchema = new mongoose.Schema(
       default: [],
     },
 
+    adjustmentsApplied: {
+      type: Boolean,
+      default: false,
+    },
+
+    appliedAt: {
+      type: Date,
+    },
+
     isMock: {
       type: Boolean,
       default: false,

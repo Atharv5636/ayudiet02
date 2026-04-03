@@ -443,6 +443,20 @@ const isValidAnalysisCache = (analysis) =>
       analysis.computedAt
   );
 
+const ANALYSIS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const isAnalysisStale = (analysis) => {
+  const computedAt = analysis?.computedAt
+    ? new Date(analysis.computedAt).getTime()
+    : Number.NaN;
+
+  if (!Number.isFinite(computedAt)) {
+    return true;
+  }
+
+  return computedAt < Date.now() - ANALYSIS_MAX_AGE_MS;
+};
+
 const persistPlanAnalysis = async (planId, analysis) => {
   if (!planId || !analysis) {
     return null;
@@ -501,13 +515,22 @@ const attachAnalysisToPlan = async (
   const normalizedPlan =
     typeof plan.toObject === "function" ? plan.toObject() : { ...plan };
 
-  if (!forceCompute && isValidAnalysisCache(normalizedPlan.analysis)) {
+  if (
+    !forceCompute &&
+    isValidAnalysisCache(normalizedPlan.analysis) &&
+    !isAnalysisStale(normalizedPlan.analysis)
+  ) {
     console.log("Using cached analysis");
     console.log("Sending plan analysis:", normalizedPlan.analysis);
     return normalizedPlan;
   }
 
-  if (!forceCompute && normalizedPlan.analysis && !isValidAnalysisCache(normalizedPlan.analysis)) {
+  if (
+    !forceCompute &&
+    normalizedPlan.analysis &&
+    (!isValidAnalysisCache(normalizedPlan.analysis) ||
+      isAnalysisStale(normalizedPlan.analysis))
+  ) {
     console.log("Computing new analysis");
     return computeAndPersistPlanAnalysis(normalizedPlan);
   }
@@ -877,6 +900,47 @@ const rejectPlan = async (req, res, next) => {
   }
 };
 
+const applyPlanAdjustments = async (req, res, next) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return next(new ApiError(400, "Invalid plan id"));
+    }
+
+    const plan = await Plan.findOne({
+      _id: req.params.id,
+      doctor: req.user.id,
+    }).populate("patient", "name age gender");
+
+    if (!plan) {
+      return next(new ApiError(404, "Plan not found"));
+    }
+
+    if (plan.adjustmentsApplied) {
+      return res.status(200).json({
+        success: true,
+        message: "Plan adjustments already applied",
+        plan: ensureAnalysisInResponse(plan),
+      });
+    }
+
+    plan.adjustmentsApplied = true;
+    plan.appliedAt = new Date();
+
+    await plan.save();
+
+    const normalizedPlan = ensureAnalysisInResponse(plan);
+    logOutgoingPlan(normalizedPlan);
+
+    res.status(200).json({
+      success: true,
+      message: "Plan adjustments applied successfully",
+      plan: normalizedPlan,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getPlansByPatient = async (req, res, next) => {
   try {
     const { patientId } = req.params;
@@ -945,6 +1009,7 @@ module.exports = {
   createPlan,
   updatePlan,
   rejectPlan,
+  applyPlanAdjustments,
   getPlansByPatient,
   getAdaptivePlanModifications,
 };

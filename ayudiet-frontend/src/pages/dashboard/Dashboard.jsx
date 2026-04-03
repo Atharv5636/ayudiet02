@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
@@ -142,6 +142,30 @@ function Dashboard() {
     if (score >= 4) return "Moderate";
     return "Stable";
   }
+  function getRelativeTime(computedAt) {
+    if (!computedAt) return null;
+
+    const dateObj = new Date(computedAt);
+    if (isNaN(dateObj.getTime())) return null;
+
+    const diffMs = Math.max(0, Date.now() - dateObj.getTime());
+    const diffMin = Math.floor(diffMs / 60000);
+
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin} min ago`;
+
+    const diffHr = Math.floor(diffMin / 60);
+    return `${diffHr} hr ago`;
+  }
+
+  function getExactDateTime(computedAt) {
+    if (!computedAt) return null;
+
+    const dateObj = new Date(computedAt);
+    if (isNaN(dateObj.getTime())) return null;
+
+    return dateObj.toLocaleString();
+  }
 
   const getPatientIntelligence = (patient) => {
     const linkedPlan = getLatestPlanForPatient(patient);
@@ -269,56 +293,23 @@ function Dashboard() {
     return issue.toLowerCase().includes("energy");
   }).length;
 
-  const criticalPatients = plansWithScore
-    .filter((plan) => plan.attentionScore >= 5)
-    .slice(0, 3);
-
-  const topCriticalPatients = [...enrichedPatients]
-    .filter((patient) => needsAttention(patient))
-    .sort((left, right) => {
-      const leftScore =
-        typeof left.dashboardIntelligence?.score === "number"
-          ? left.dashboardIntelligence.score
-          : 101;
-      const rightScore =
-        typeof right.dashboardIntelligence?.score === "number"
-          ? right.dashboardIntelligence.score
-          : 101;
-
-      if (leftScore !== rightScore) {
-        return leftScore - rightScore;
-      }
-
-      const leftTrend = left.dashboardIntelligence?.trend || "stable";
-      const rightTrend = right.dashboardIntelligence?.trend || "stable";
-      const trendRank = {
-        declining: 0,
-        slight_decline: 1,
-        stable: 2,
-        slight_improvement: 3,
-        improving: 4,
-      };
-
-      if ((trendRank[leftTrend] ?? 99) !== (trendRank[rightTrend] ?? 99)) {
-        return (trendRank[leftTrend] ?? 99) - (trendRank[rightTrend] ?? 99);
-      }
-
-      const leftIssue = left.dashboardIntelligence?.primaryIssue === "adherence" ? 0 : 1;
-      const rightIssue = right.dashboardIntelligence?.primaryIssue === "adherence" ? 0 : 1;
-
-      if (leftIssue !== rightIssue) {
-        return leftIssue - rightIssue;
-      }
-
-      return left.name.localeCompare(right.name);
-    })
-    .slice(0, 3);
+  const criticalPatients = useMemo(() => {
+    return [...plansWithScore]
+      .sort((a, b) => b.attentionScore - a.attentionScore)
+      .slice(0, 3);
+  }, [plansWithScore]);
 
   const sortedActivePlans = useMemo(() => {
     return [...plansWithScore].sort(
       (a, b) => b.attentionScore - a.attentionScore
     );
   }, [plansWithScore]);
+
+  console.log("CRITICAL DEBUG:", {
+    total: plansWithScore.length,
+    selected: criticalPatients.length,
+    scores: plansWithScore.map((p) => p.attentionScore),
+  });
 
   const nextAgendaId =
     agenda.find((item) => item.status !== "completed")?.id || null;
@@ -414,40 +405,56 @@ function Dashboard() {
     setAgenda((prevAgenda) => [...prevAgenda, agendaItem]);
   };
 
-  function handleApplyChanges(plan) {
+  async function handleApplyChanges(plan) {
+    if (!plan?._id) return;
+
     const planId = String(plan?._id);
 
-    if (loadingPlans[planId] || appliedPlans[planId]) return;
+    if (loadingPlans[planId] || plan?.adjustmentsApplied) return;
     if (!plan?.adjustments?.length) return;
 
-    console.log("Applying changes for:", planId);
-    console.log("Adjustments:", plan.adjustments);
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert("Session expired. Please login again.");
+      return;
+    }
 
     setLoadingPlans((prev) => ({
       ...prev,
       [planId]: true,
     }));
 
-    setTimeout(() => {
-      try {
-        setAppliedPlans((prev) => ({
-          ...prev,
-          [planId]: true,
-        }));
+    try {
+      const response = await fetchJson(`/plans/${planId}/apply-adjustments`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-        setLoadingPlans((prev) => ({
-          ...prev,
-          [planId]: false,
-        }));
-      } catch (err) {
-        console.error("Failed inside timeout:", err);
-
-        setLoadingPlans((prev) => ({
-          ...prev,
-          [planId]: false,
-        }));
+      if (!response || !response.plan) {
+        throw new Error("Invalid server response");
       }
-    }, 800);
+
+      const updatedPlan = response.plan;
+
+      setActivePlans((prevPlans) =>
+        prevPlans.map((item) =>
+          String(item?._id) === planId ? updatedPlan : item
+        )
+      );
+
+      alert(response?.message || "Changes applied successfully");
+    } catch (error) {
+      console.error("Failed to apply adjustments:", error);
+      alert("Failed to apply changes. Please try again.");
+    } finally {
+      setLoadingPlans((prev) => ({
+        ...prev,
+        [planId]: false,
+      }));
+    }
   }
 
   useEffect(() => {
@@ -549,59 +556,32 @@ function Dashboard() {
             </div>
 
             <div className="space-y-3">
-              {topCriticalPatients.length === 0 ? (
-                <p className="text-sm text-neutral-400">No critical patients right now.</p>
+              {plansWithScore.length === 0 ? (
+                <p className="text-sm text-neutral-400">No data available</p>
+              ) : criticalPatients.length === 0 ? (
+                <p className="text-sm text-neutral-400">No high-risk patients</p>
               ) : (
-                topCriticalPatients.map((patient) => {
-                  const trend = patient.dashboardIntelligence?.trend || "stable";
-                  const trendMeta = getTrendMeta(trend);
-                  const TrendIcon = trendMeta.icon;
-
-                  return (
-                    <div
-                      key={patient._id}
-                      className="rounded-lg border border-neutral-800 bg-neutral-800/60 px-4 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-white">{patient.name}</p>
-                        <div className="flex items-center gap-2">
-                          {isImmediateAttention(patient) && (
-                            <span className="rounded-full bg-red-500/12 px-2.5 py-1 text-[11px] font-medium text-red-300">
-                              Needs Immediate Attention
-                            </span>
-                          )}
-                          <div
-                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${trendMeta.chipClassName}`}
-                          >
-                            <TrendIcon className="h-3.5 w-3.5" />
-                            {formatTrendLabel(trend)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 grid gap-2 text-sm text-neutral-300 md:grid-cols-3">
-                        <p className="capitalize">
-                          Issue: {patient.dashboardIntelligence?.primaryIssue || "none"}
-                        </p>
-                        <p>
-                          Score:{" "}
-                          {typeof patient.dashboardIntelligence?.score === "number"
-                            ? patient.dashboardIntelligence.score
-                            : "—"}
-                        </p>
-                        <p className="text-neutral-400">
-                          {patient.dashboardIntelligence?.delta || "No delta"}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
+                criticalPatients.map((plan) => (
+                  <div
+                    key={plan._id}
+                    className="rounded-lg border border-neutral-800 bg-neutral-800/60 px-4 py-3"
+                  >
+                    <p className="text-sm text-white font-medium">
+                      {plan.patient?.name || "Unknown"}
+                    </p>
+                    <p className="text-xs text-neutral-400">
+                      {plan.analysis?.primaryIssue || "-"} • {plan.analysis?.trend || "-"}
+                    </p>
+                    <p className="text-xs text-red-400">
+                      Priority: {plan.attentionScore}
+                    </p>
+                  </div>
+                ))
               )}
             </div>
           </div>
         </div>
-
-        <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
+<div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
           <TodaysAgenda
             agenda={agenda}
             patients={patients}
@@ -654,6 +634,12 @@ function Dashboard() {
                   plan.analysis?.effectiveness?.score ??
                   plan.analysis?.effectiveness ??
                   "-";
+                const evaluatedAt =
+                  plan.analysis?.computedAt || plan.updatedAt || plan.createdAt;
+                const timeLabel = getRelativeTime(evaluatedAt);
+                const exactTimeLabel = getExactDateTime(evaluatedAt);
+
+                console.log(plan.analysis);
 
                 return (
                   <div
@@ -715,22 +701,23 @@ function Dashboard() {
                               type="button"
                               disabled={
                                 loadingPlans[planId] ||
-                                appliedPlans[planId]
+                                appliedPlans[planId] ||
+                                plan.adjustmentsApplied
                               }
                               onClick={() => handleApplyChanges(plan)}
                               className={`mt-2 inline-flex items-center justify-center px-4 rounded-md py-1.5 text-xs font-medium text-white transition ${
-                                appliedPlans[planId]
+                                appliedPlans[planId] || plan.adjustmentsApplied
                                   ? "bg-neutral-700 cursor-not-allowed"
                                   : "bg-emerald-500 hover:bg-emerald-400"
                               }`}
                             >
                               {loadingPlans[planId]
                                 ? "Applying..."
-                                : appliedPlans[planId]
+                                : appliedPlans[planId] || plan.adjustmentsApplied
                                   ? "Applied"
                                   : "Apply Changes"}
                             </button>
-                            {appliedPlans[planId] && adjustments.length > 0 && (
+                            {(appliedPlans[planId] || plan.adjustmentsApplied) && adjustments.length > 0 && (
                               <p className="mt-1 text-[10px] text-neutral-400">
                                 Applied {adjustments.length} change{adjustments.length > 1 ? "s" : ""}
                               </p>
@@ -761,6 +748,19 @@ function Dashboard() {
                         <p className="mt-1 text-xs text-neutral-500">{getTrendDelta(plan)}</p>
                       </div>
                     </div>
+                    {plan.analysis?.reason && (
+                      <div className="mt-2 text-xs text-neutral-400 leading-relaxed">
+                        <span className="text-neutral-500">Reason:</span>{" "}
+                        {plan.analysis.reason}
+                      </div>
+                    )}
+                    {timeLabel && (
+                      <p className="mt-2 text-[11px] text-neutral-400 flex items-center gap-1">
+                        <span className="text-neutral-500">⏱</span>
+                        Last evaluated {timeLabel}
+                        {exactTimeLabel ? ` (${exactTimeLabel})` : ""}
+                      </p>
+                    )}
 
                     <div className="mt-4">
                       <button
@@ -881,3 +881,17 @@ function Dashboard() {
 }
 
 export default Dashboard;
+
+
+
+
+
+
+
+
+
+
+
+
+
+

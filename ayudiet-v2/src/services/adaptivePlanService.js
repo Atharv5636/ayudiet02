@@ -1069,6 +1069,7 @@ const modifyPlanBasedOnProgress = async (patientId) => {
       effectiveness: 0,
       trend: "No Data",
       primaryIssue: "No logs available",
+      reason: "No progress logs available",
     };
     const adjustments = [];
 
@@ -1109,14 +1110,14 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     energyValues.length > 0
       ? energyValues.reduce((sum, value) => sum + value, 0) / energyValues.length
       : 0;
-  const weightChange =
+  const overallWeightChange =
     weightValues.length > 1
       ? weightValues[weightValues.length - 1] - weightValues[0]
       : 0;
 
   const adherenceScore = clamp(avgAdherence, 0, 100);
   const energyScore = clamp((avgEnergy / ENERGY_SCALE_MAX) * 100, 0, 100);
-  const weightScore = clamp(Math.abs(weightChange) * 20, 0, 100);
+  const weightScore = clamp(Math.abs(overallWeightChange) * 20, 0, 100);
 
   const effectiveness = Math.round(
     adherenceScore * 0.5 + energyScore * 0.3 + weightScore * 0.2
@@ -1186,7 +1187,7 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     patientId: String(patientId),
     avgAdherence,
     avgEnergy,
-    weightChange,
+    weightChange: overallWeightChange,
     trendScore,
     adherenceSignal,
     isImproving,
@@ -1209,7 +1210,7 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     primaryIssue = "Low adherence";
   } else if (avgEnergy < 2.5) {
     primaryIssue = "Low energy";
-  } else if (Math.abs(weightChange) < 0.5) {
+  } else if (Math.abs(overallWeightChange) < 0.5) {
     primaryIssue = "No progress";
   }
 
@@ -1218,21 +1219,75 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     trend,
     primaryIssue,
   };
-  const analysis = computedAnalysis;
   let adjustments = [];
+  const recentLogs = progressLogs.slice(-5);
+  const first = recentLogs[0] || {};
+  const last = recentLogs[recentLogs.length - 1] || {};
 
-  if (analysis.primaryIssue === "Low adherence") {
+  const adherenceStart = first.adherence || 0;
+  const adherenceEnd = last.adherence || 0;
+
+  const weightStart = first.weight || 0;
+  const weightEnd = last.weight || 0;
+
+  const energyStart = first.energyLevel || 0;
+  const energyEnd = last.energyLevel || 0;
+  const adherenceChange = adherenceEnd - adherenceStart;
+  const energyChange = energyEnd - energyStart;
+  const weightChange = weightEnd - weightStart;
+  const adherenceStartVal = Number(adherenceStart.toFixed(0));
+  const adherenceEndVal = Number(adherenceEnd.toFixed(0));
+
+  const weightStartVal = Number(weightStart.toFixed(1));
+  const weightEndVal = Number(weightEnd.toFixed(1));
+
+  const energyStartVal = Number(energyStart.toFixed(1));
+  const energyEndVal = Number(energyEnd.toFixed(1));
+
+  let reason = "";
+
+  if (recentLogs.length < 2) {
+    reason = "Not enough data to determine trend";
+  } else if (primaryIssue === "Low adherence") {
+    if (adherenceChange < 0) {
+      reason = `Adherence dropped from ${adherenceStartVal}% → ${adherenceEndVal}% over last ${recentLogs.length} logs`;
+    } else {
+      reason = `Adherence improved from ${adherenceStartVal}% → ${adherenceEndVal}% but still below optimal`;
+    }
+  } else if (primaryIssue === "Low energy") {
+    if (energyChange < 0) {
+      reason = `Energy level decreased from ${energyStartVal} → ${energyEndVal} over last ${recentLogs.length} logs`;
+    } else {
+      reason = `Energy level improved from ${energyStartVal} → ${energyEndVal} but remains low`;
+    }
+  } else if (primaryIssue === "No progress") {
+    if (Math.abs(weightChange) < 0.5) {
+      reason = `Weight remained nearly constant (${weightStartVal}kg → ${weightEndVal}kg), indicating lack of progress`;
+    } else {
+      reason = `Weight changed from ${weightStartVal}kg → ${weightEndVal}kg but not aligned with goal`;
+    }
+  } else {
+    const weightDiff = (weightEnd - weightStart).toFixed(1);
+    const adherenceDiff = (adherenceEnd - adherenceStart).toFixed(0);
+    reason = `Weight ${weightChange < 0 ? "decreased" : "increased"} by ${weightDiff}kg and adherence ${adherenceChange < 0 ? "declined" : "improved"} by ${adherenceDiff}% over recent logs`;
+  }
+
+  const analysis = {
+    ...computedAnalysis,
+    reason,
+  };
+
+  if (primaryIssue === "Low adherence") {
     adjustments.push("Simplify diet plan");
   }
 
-  if (analysis.primaryIssue === "Low energy") {
+  if (primaryIssue === "Low energy") {
     adjustments.push("Increase calorie intake");
   }
 
-  if (analysis.primaryIssue === "No progress") {
+  if (primaryIssue === "No progress") {
     adjustments.push("Adjust calorie and macro ratio");
   }
-
   activePlan.analysis = {
     ...analysis,
     computedAt: new Date(),
@@ -1244,7 +1299,7 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     patientId: String(patient._id),
     planId: String(activePlan._id),
     logCount: normalizedLogs.length,
-    analysis: computedAnalysis,
+    analysis,
     appliedRule: null,
     changes: [],
   };
@@ -1336,3 +1391,4 @@ module.exports = {
   normalizeEnergy,
   normalizeProgressLog,
 };
+
