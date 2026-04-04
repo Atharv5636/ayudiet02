@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
 import agendaFrame from "../../assets/agenda-botanical-frame.png";
@@ -6,6 +6,19 @@ import agendaFrame from "../../assets/agenda-botanical-frame.png";
 function Patients() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
+
+  const totalPages = Math.max(1, Math.ceil((patients?.length || 0) / ITEMS_PER_PAGE));
+
+  const paginatedPatients = useMemo(() => {
+    const list = patients || [];
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return list.slice(start, start + ITEMS_PER_PAGE);
+  }, [patients, currentPage]);
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, patients?.length || 0);
 
   useEffect(() => {
     async function fetchPatients() {
@@ -25,6 +38,10 @@ function Patients() {
     fetchPatients();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [patients.length]);
+
   return (
     <div className="space-y-4">
       <h1 className="mb-4 text-2xl font-bold text-gray-900">Patients</h1>
@@ -34,7 +51,7 @@ function Patients() {
       ) : (
         <div className="rounded-2xl bg-[#c8d6b7] p-4">
           <div className="space-y-3">
-            {patients.map((p) => (
+            {paginatedPatients.map((p) => (
               <div
                 key={p._id}
                 className="w-full overflow-hidden rounded-xl border-[2px] border-black p-4 shadow-sm"
@@ -73,6 +90,34 @@ function Patients() {
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-4 border-t border-gray-200 pt-3">
+            <div className="flex items-center justify-center gap-6 sm:gap-10">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                disabled={currentPage === 1 || !patients || patients.length === 0}
+                className="rounded border border-gray-300 bg-white px-3 py-1 text-xs text-gray-700 disabled:opacity-50"
+              >
+                Prev
+              </button>
+
+              {patients && patients.length > 0 && (
+                <p className="text-xs text-gray-600">
+                  Showing {startIndex + 1}-{endIndex} of {patients.length}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages || !patients || patients.length === 0}
+                className="rounded border border-gray-300 bg-white px-3 py-1 text-xs text-gray-700 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       )}

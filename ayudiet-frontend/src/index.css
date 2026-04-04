@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
 /* Ensure full-height layout */
@@ -13,17 +13,41 @@ body,
 body {
   background-color: #f9fafb;
   color: #111827;
-  font-family: "Manrope", "Segoe UI", Helvetica, Arial, sans-serif;
-  line-height: 1.45;
+  font-family: "DM Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: "DM Sans", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 h1,
 h2,
 h3,
 h4 {
-  font-family: "Sora", "Manrope", "Segoe UI", Helvetica, Arial, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: "Space Grotesk", "DM Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  letter-spacing: -0.012em;
+}
+
+/* Richer neutral tones to avoid flat/dull gray text */
+.text-gray-400 {
+  color: #6b7d95 !important;
+}
+
+.text-gray-500 {
+  color: #566a84 !important;
+}
+
+.text-gray-600 {
+  color: #3d5471 !important;
+}
+
+.text-gray-700 {
+  color: #2b4462 !important;
 }
