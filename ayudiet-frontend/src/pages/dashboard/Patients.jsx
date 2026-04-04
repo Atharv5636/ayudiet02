@@ -43,7 +43,16 @@ function Patients() {
 
   return (
     <div className="space-y-4">
-      <h1 className="mb-4 text-2xl font-bold text-gray-900">Patients</h1>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard/add-patient")}
+          className="rounded-md bg-yellow-400 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-500"
+        >
+          Add Patient
+        </button>
+      </div>
 
       {patients.length === 0 ? (
         <p className="text-gray-600">No patients found</p>

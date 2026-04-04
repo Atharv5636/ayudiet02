@@ -7,13 +7,20 @@ import {
 } from "../../services/progress.service";
 import {
   createPlan,
+  explainPlanFromBackend,
   fetchPlansByPatient,
-  fixAiPlan,
-  generateAiPlan,
+  generatePlanFromBackend,
   updatePlan,
 } from "../../services/plan.service";
 import usePlansStore from "../../store/plansStore";
 import { validatePlan } from "../../utils/planValidation";
+import {
+  buildDietPlan,
+  buildWeeklyDietPlan,
+  formatRiskFlags,
+} from "@/utils/dietPlanEngine";
+import { adjustPlanByTrend, analyzeProgress } from "@/utils/progressionEngine";
+import { generateProgressExplanation } from "@/utils/explainEngine";
 
 const createMealDay = (index) => ({
   day: `Day ${index + 1}`,
@@ -21,6 +28,11 @@ const createMealDay = (index) => ({
   lunch: "",
   dinner: "",
 });
+
+const DEFAULT_PLAN_DAYS = 7;
+
+const createInitialMealDays = (count = DEFAULT_PLAN_DAYS) =>
+  Array.from({ length: count }, (_, index) => createMealDay(index));
 
 const average = (values = []) =>
   values.length
@@ -53,7 +65,9 @@ function PatientDetails() {
   const [goal, setGoal] = useState("");
   const [dosha, setDosha] = useState("");
   const [date, setDate] = useState("");
-  const [days, setDays] = useState([createMealDay(0)]);
+  const [days, setDays] = useState(createInitialMealDays());
+  const [builderMode, setBuilderMode] = useState("manual");
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [expandedPlanId, setExpandedPlanId] = useState(null);
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
@@ -61,6 +75,16 @@ function PatientDetails() {
   const [autoFixChanges, setAutoFixChanges] = useState([]);
   const [lastGeneratedContext, setLastGeneratedContext] = useState(null);
   const [lastProgressInsights, setLastProgressInsights] = useState([]);
+  const [generatedDietPlan, setGeneratedDietPlan] = useState(null);
+  const [isGeneratedPlanLowConfidence, setIsGeneratedPlanLowConfidence] = useState(false);
+  const [generatedPlanTrend, setGeneratedPlanTrend] = useState("stable");
+  const [generatedPlanTrendConfidence, setGeneratedPlanTrendConfidence] = useState(0.4);
+  const [generatedPlanReason, setGeneratedPlanReason] = useState({
+    summary: "Not enough data",
+    interpretation: "Insufficient recent progress history to infer a pattern",
+    actionReason: "Plan maintained due to stable progress",
+  });
+  const [latestPlanChangeAudit, setLatestPlanChangeAudit] = useState(null);
   const [progressLogs, setProgressLogs] = useState([]);
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressForm, setProgressForm] = useState({
@@ -227,7 +251,9 @@ function PatientDetails() {
     setGoal("");
     setDosha("");
     setDate("");
-    setDays([createMealDay(0)]);
+    setDays(createInitialMealDays());
+    setBuilderMode("manual");
+    setSelectedDayIndex(0);
     setAutoFixChanges([]);
     setLastGeneratedContext(null);
     setLastProgressInsights([]);
@@ -251,8 +277,10 @@ function PatientDetails() {
             lunch: meal.lunch || "",
             dinner: meal.dinner || "",
           }))
-        : [createMealDay(0)]
+        : createInitialMealDays()
     );
+    setBuilderMode("manual");
+    setSelectedDayIndex(0);
     setAutoFixChanges([]);
     setLastGeneratedContext(null);
     setLastProgressInsights([]);
@@ -267,8 +295,44 @@ function PatientDetails() {
     );
   };
 
+  const applyGeneratedDietPlanToBuilder = (dietPlan) => {
+    if (!dietPlan) {
+      return;
+    }
+
+    setDays((currentDays) => {
+      const nextDays = Array.isArray(currentDays) && currentDays.length
+        ? [...currentDays]
+        : createInitialMealDays();
+
+      if (Array.isArray(dietPlan)) {
+        for (let index = 0; index < nextDays.length; index += 1) {
+          const meal = dietPlan[index] || dietPlan[dietPlan.length - 1] || {};
+          nextDays[index] = {
+            ...nextDays[index],
+            breakfast: meal.breakfast || "",
+            lunch: meal.lunch || "",
+            dinner: meal.dinner || "",
+          };
+        }
+      } else {
+        for (let index = 0; index < nextDays.length; index += 1) {
+          nextDays[index] = {
+            ...nextDays[index],
+            breakfast: dietPlan.breakfast || "",
+            lunch: dietPlan.lunch || "",
+            dinner: dietPlan.dinner || "",
+          };
+        }
+      }
+
+      return nextDays;
+    });
+  };
+
   const addDay = () => {
     setAutoFixChanges([]);
+    setBuilderMode("manual");
     setDays((currentDays) => [...currentDays, createMealDay(currentDays.length)]);
   };
 
@@ -326,6 +390,12 @@ function PatientDetails() {
     console.log("Logs:", progressLogs);
   }, [progressLogs]);
 
+  useEffect(() => {
+    setSelectedDayIndex((currentIndex) =>
+      Math.min(currentIndex, Math.max(days.length - 1, 0))
+    );
+  }, [days.length]);
+
   const handleProgressFieldChange = (field, value) => {
     setProgressForm((current) => ({
       ...current,
@@ -333,106 +403,163 @@ function PatientDetails() {
     }));
   };
 
-  const hasManualMeals = days.some(
-    (day) => day.breakfast || day.lunch || day.dinner
-  );
-
-  const handleGenerateWithAi = async () => {
-    if (!goal.trim() || !dosha) {
-      alert("Goal and dosha type are required before AI generation");
+      const handleGeneratePlan = async (planInput = null) => {
+    const symptoms =
+      planInput?.primaryIssue || goal.trim() || patient?.healthConditions || "";
+    if (!symptoms) {
+      alert("Enter goal or symptoms before generation");
       return;
     }
-
-    if (
-      hasManualMeals &&
-      !window.confirm(
-        "This will replace the current meals in the builder. Continue?"
-      )
-    ) {
-      return;
-    }
-
     try {
       setIsGeneratingAi(true);
-
-      const response = await generateAiPlan({
-        patientId: id,
-        goal: goal.trim(),
-        doshaType: dosha,
-        patientProfile: {
-          age: patient?.age,
-          weight: patient?.weight,
-          gender: patient?.gender,
-          conditions: patient?.healthConditions,
-        },
+      const result = await generatePlanFromBackend({
+        symptoms,
       });
-      const generatedMeals = response.meals || [];
-
-      setDays(
-        generatedMeals.length
-          ? generatedMeals.map((meal, index) => ({
-              day: meal.day || `Day ${index + 1}`,
-              breakfast: meal.breakfast || "",
-              lunch: meal.lunch || "",
-              dinner: meal.dinner || "",
-            }))
-          : [createMealDay(0)]
+      const profile = result || {};
+      const confidence =
+        typeof profile?.confidence === "number" ? profile.confidence : 0;
+      const patientWithProgress = {
+        ...patient,
+        progressLogs,
+      };
+      const baseDietPlan = buildWeeklyDietPlan(profile, days.length || DEFAULT_PLAN_DAYS);
+      let dietPlan = baseDietPlan;
+      const progression = analyzeProgress(patientWithProgress.progressLogs || []);
+      const trend = progression?.trend || "stable";
+      const trendConfidence =
+        typeof progression?.confidence === "number" ? progression.confidence : 0.4;
+      dietPlan = adjustPlanByTrend(dietPlan, trend);
+      const reason = generateProgressExplanation(
+        patientWithProgress.progressLogs || [],
+        trend
       );
+      const formatted = {
+        score: Math.round(confidence * 100),
+        issue: formatRiskFlags(profile.risk_flags),
+        category: profile.primary_dosha || "-",
+        dietPlan,
+      };
+      const confidenceLabel =
+        confidence < 0.4 ? "Low confidence" : `Confidence: ${formatted.score}%`;
       setAutoFixChanges([]);
-      setLastGeneratedContext(response.patientContext || null);
-      setLastProgressInsights(response.progressInsights || []);
-      showToast("Diet plan generated successfully");
+      setGeneratedDietPlan(
+        Array.isArray(formatted.dietPlan)
+          ? formatted.dietPlan[0] || buildDietPlan(profile)
+          : formatted.dietPlan
+      );
+      applyGeneratedDietPlanToBuilder(formatted.dietPlan);
+      setBuilderMode("ai");
+      setSelectedDayIndex(0);
+      setGeneratedPlanTrend(trend);
+      setGeneratedPlanTrendConfidence(trendConfidence);
+      setGeneratedPlanReason(reason);
+      setIsGeneratedPlanLowConfidence(confidence < 0.4);
+      setLatestPlanChangeAudit({
+        previousPlan: baseDietPlan,
+        updatedPlan: dietPlan,
+        trend,
+        timestamp: new Date().toISOString(),
+      });
+      setLastGeneratedContext({
+        goal: goal.trim() || "Symptoms analysis",
+        doshaType: formatted.category,
+        weight: patient?.weight || "-",
+      });
+      setLastProgressInsights([
+        `Risk Flags: ${formatted.issue}`,
+        `Category: ${formatted.category}`,
+        `Trend: ${trend.charAt(0).toUpperCase() + trend.slice(1)}`,
+        `Trend confidence: ${Math.round(trendConfidence * 100)}%`,
+        confidenceLabel,
+      ]);
+      if (confidence < 0.4) {
+        showToast("Low confidence result. Please review manually before approving.");
+      } else {
+        showToast("Profile analysis generated successfully");
+      }
     } catch (error) {
-      console.error("Error generating diet plan:", error);
-      alert(error.message || "Failed to generate diet plan");
+      console.error("Error generating profile analysis:", error);
+      alert(error.message || "Failed to generate profile analysis");
     } finally {
       setIsGeneratingAi(false);
     }
   };
+  const handleGenerateWithAi = () => handleGeneratePlan();
 
+  const applyDeterministicAutoImprove = (trend) => {
+    setDays((currentDays) => {
+      if (!Array.isArray(currentDays) || currentDays.length === 0) {
+        return currentDays;
+      }
+
+      const normalizedPlan = currentDays.map((day) => ({
+        breakfast: day?.breakfast || "",
+        lunch: day?.lunch || "",
+        dinner: day?.dinner || "",
+      }));
+
+      const improvedPlan = adjustPlanByTrend(normalizedPlan, trend);
+      if (!Array.isArray(improvedPlan)) {
+        return currentDays;
+      }
+
+      return currentDays.map((day, index) => ({
+        ...day,
+        breakfast: improvedPlan[index]?.breakfast ?? day.breakfast,
+        lunch: improvedPlan[index]?.lunch ?? day.lunch,
+        dinner: improvedPlan[index]?.dinner ?? day.dinner,
+      }));
+    });
+  };
+
+  const dayEntries = days[selectedDayIndex]
+    ? [{ day: days[selectedDayIndex], index: selectedDayIndex }]
+    : [];
   const handleAutoImprovePlan = async () => {
-    if (!dosha) {
-      alert("Select dosha type before improving the plan");
-      return;
-    }
-
-    if (!days.some((day) => day.breakfast || day.lunch || day.dinner)) {
-      alert("Add or generate meals before using auto improve");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        "This will replace the meals in the builder with an improved version. Continue?"
-      )
-    ) {
+    const symptoms = goal.trim() || patient?.healthConditions || "";
+    if (!symptoms) {
+      alert("Enter goal or symptoms before explain");
       return;
     }
 
     try {
       setIsImprovingPlan(true);
 
-      const response = await fixAiPlan({
-        meals: days,
-        doshaType: dosha,
+      const result = await explainPlanFromBackend({
+        symptoms,
       });
+      const progression = analyzeProgress(progressLogs || []);
+      const trend = progression?.trend || "stable";
+      applyDeterministicAutoImprove(trend);
+      const explainChanges = [];
 
-      const improvedMeals = response.improvedMeals || [];
-      setDays(
-        improvedMeals.length
-          ? improvedMeals.map((meal, index) => ({
-              day: meal.day || `Day ${index + 1}`,
-              breakfast: meal.breakfast || "",
-              lunch: meal.lunch || "",
-              dinner: meal.dinner || "",
-            }))
-          : days
+      if (Array.isArray(result?.risk_flags) && result.risk_flags.length > 0) {
+        explainChanges.push(`Risk Flags: ${result.risk_flags.join(", ")}`);
+      }
+      if (result?.primary_dosha) {
+        explainChanges.push(`Primary Dosha: ${result.primary_dosha}`);
+      }
+      if (typeof result?.confidence === "number") {
+        const confidencePercent = Math.round(result.confidence * 100);
+        explainChanges.push(
+          result.confidence < 0.4
+            ? "Low confidence result. Please review manually before approving."
+            : `Confidence: ${confidencePercent}%`
+        );
+      }
+      explainChanges.push(
+        `Auto-improvement applied using deterministic trend logic (${trend})`
       );
-      setAutoFixChanges(response.changes || []);
-      showToast("Plan improved successfully");
+
+      setAutoFixChanges(
+        explainChanges.length > 0
+          ? explainChanges
+          : ["No explainability details were returned."]
+      );
+      showToast("Explainability response loaded");
     } catch (error) {
-      console.error("Error improving plan:", error);
-      alert(error.message || "Failed to improve plan");
+      console.error("Error loading explainability response:", error);
+      alert(error.message || "Failed to load explainability response");
     } finally {
       setIsImprovingPlan(false);
     }
@@ -563,6 +690,15 @@ function PatientDetails() {
   }, [fetchProgress]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem("progressLogs", JSON.stringify(progressLogs));
+      localStorage.setItem(`progressLogs:${id}`, JSON.stringify(progressLogs));
+    } catch (error) {
+      console.error("Failed to persist progress logs:", error);
+    }
+  }, [progressLogs, id]);
+
+  useEffect(() => {
     if (!patient) {
       return;
     }
@@ -606,6 +742,23 @@ function PatientDetails() {
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
             {patient?.name}
           </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+              Target: {patient?.planningInputs?.primaryGoal || "-"}
+            </span>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+              Goal Weight:{" "}
+              {typeof patient?.planningInputs?.targetWeight === "number"
+                ? `${patient.planningInputs.targetWeight} kg`
+                : "-"}
+            </span>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+              Timeframe:{" "}
+              {typeof patient?.planningInputs?.timeframeWeeks === "number"
+                ? `${patient.planningInputs.timeframeWeeks} weeks`
+                : "-"}
+            </span>
+          </div>
         </div>
 
         <Section title="Basic Information">
@@ -644,10 +797,11 @@ function PatientDetails() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-lg font-semibold text-gray-900">
-                      {activePlan.title}
+                      {activePlan.title?.trim() || "Untitled Plan"}
                     </p>
                     <p className="mt-1 text-sm text-gray-600">
-                      Dosha: {activePlan.doshaType} | Review due:{" "}
+                      Dosha: {activePlan.doshaType || "-"} | Days:{" "}
+                      {Array.isArray(activePlan.meals) ? activePlan.meals.length : 0} | Review due:{" "}
                       {new Date(activePlan.reviewDueDate).toLocaleDateString()}
                     </p>
                   </div>
@@ -661,7 +815,7 @@ function PatientDetails() {
                 </div>
               </div>
 
-              <MealsList meals={activePlan.meals} />
+              <MealsList meals={activePlan.meals} compact />
               <PlanValidationCard
                 validation={validatePlan(activePlan.meals, activePlan.doshaType)}
               />
@@ -730,6 +884,30 @@ function PatientDetails() {
                       Meal Builder
                     </h3>
                     <div className="flex flex-wrap items-center gap-3">
+                      <div className="inline-flex items-center rounded-lg border border-gray-200 p-1">
+                        <button
+                          type="button"
+                          onClick={() => setBuilderMode("manual")}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                            builderMode === "manual"
+                              ? "bg-gray-900 text-white"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          Doctor Manual Plan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBuilderMode("ai")}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                            builderMode === "ai"
+                              ? "bg-gray-900 text-white"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          AI Weekly Plan
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={handleGenerateWithAi}
@@ -753,6 +931,7 @@ function PatientDetails() {
                       <button
                         type="button"
                         onClick={addDay}
+                        disabled={builderMode === "ai"}
                         className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 transition hover:bg-black hover:text-white"
                       >
                         Add Day
@@ -760,8 +939,30 @@ function PatientDetails() {
                     </div>
                   </div>
 
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <p className="mb-2 text-xs uppercase tracking-[0.15em] text-gray-500">
+                      {builderMode === "ai" ? "Week Day Selector" : "Day Selector"}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {days.map((day, index) => (
+                        <button
+                          key={`${day.day}-${index}-selector`}
+                          type="button"
+                          onClick={() => setSelectedDayIndex(index)}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                            selectedDayIndex === index
+                              ? "bg-gray-900 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          {day.day || `Day ${index + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-5">
-                    {days.map((day, index) => (
+                    {dayEntries.map(({ day, index }) => (
                       <div
                         key={`${day.day}-${index}`}
                         className="rounded-2xl border border-gray-200 bg-white p-5  md:p-6"
@@ -781,7 +982,7 @@ function PatientDetails() {
                             />
                           </div>
 
-                          {days.length > 1 && (
+                          {builderMode !== "ai" && days.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeDay(index)}
@@ -863,6 +1064,49 @@ function PatientDetails() {
                         {lastProgressInsights.join(" | ")}
                       </p>
                     )}
+                    {generatedDietPlan && (
+                      <div
+                        className={`mt-3 space-y-1 text-sm ${
+                          isGeneratedPlanLowConfidence ? "text-gray-400" : "text-gray-700"
+                        }`}
+                      >
+                        <p>
+                          <strong>Trend:</strong>{" "}
+                          {generatedPlanTrend.charAt(0).toUpperCase() +
+                            generatedPlanTrend.slice(1)}{" "}
+                          (Confidence: {Math.round(generatedPlanTrendConfidence * 100)}%)
+                        </p>
+                        <p>
+                          <strong>Breakfast:</strong> {generatedDietPlan.breakfast}
+                        </p>
+                        <p>
+                          <strong>Lunch:</strong> {generatedDietPlan.lunch}
+                        </p>
+                        <p>
+                          <strong>Dinner:</strong> {generatedDietPlan.dinner}
+                        </p>
+                        <div className="mt-3 space-y-1">
+                          <p className="text-sm font-semibold text-gray-700">
+                            Why this plan was adjusted
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <strong>Summary:</strong> {generatedPlanReason.summary}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <strong>Interpretation:</strong> {generatedPlanReason.interpretation}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <strong>Action Taken:</strong> {generatedPlanReason.actionReason}
+                          </p>
+                          {latestPlanChangeAudit?.timestamp ? (
+                            <p className="text-xs text-gray-500">
+                              Audited at{" "}
+                              {new Date(latestPlanChangeAudit.timestamp).toLocaleString()}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -885,11 +1129,18 @@ function PatientDetails() {
                       key={plan._id}
                       className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 "
                     >
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() =>
                           setExpandedPlanId(isExpanded ? null : plan._id)
                         }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setExpandedPlanId(isExpanded ? null : plan._id);
+                          }
+                        }}
                         className="flex w-full items-center justify-between gap-4 text-left"
                       >
                         <div>
@@ -916,7 +1167,7 @@ function PatientDetails() {
                             {isExpanded ? "Hide meals" : "View meals"}
                           </span>
                         </div>
-                      </button>
+                      </div>
 
                       {isExpanded && (
                         <div className="space-y-4">
@@ -976,10 +1227,71 @@ function PatientDetails() {
         </Section>
 
         <Section title="Ayurvedic Assessment">
-          <Info label="Dominant Dosha" value={patient?.dosha || "-"} />
+          <Info
+            label="Dominant Dosha"
+            value={patient?.prakriti?.dominantDosha || "-"}
+          />
           <Info label="Diet Type" value={patient?.dietType || "-"} />
           <Info label="Activity Level" value={patient?.activityLevel || "-"} />
-          <Info label="Preferences" value={patient?.preferences || "-"} />
+          <Info
+            label="Preferences"
+            value={
+              Array.isArray(patient?.preferences) && patient.preferences.length > 0
+                ? patient.preferences.join(", ")
+                : "-"
+            }
+          />
+        </Section>
+
+        <Section title="Planning Inputs">
+          <Info
+            label="Primary Goal"
+            value={patient?.planningInputs?.primaryGoal || "-"}
+          />
+          <Info
+            label="Target Weight"
+            value={
+              typeof patient?.planningInputs?.targetWeight === "number"
+                ? `${patient.planningInputs.targetWeight} kg`
+                : "-"
+            }
+          />
+          <Info
+            label="Timeframe"
+            value={
+              typeof patient?.planningInputs?.timeframeWeeks === "number"
+                ? `${patient.planningInputs.timeframeWeeks} weeks`
+                : "-"
+            }
+          />
+          <Info
+            label="Meal Pattern"
+            value={patient?.planningInputs?.mealPattern || "-"}
+          />
+          <Info
+            label="Sleep Hours"
+            value={
+              typeof patient?.planningInputs?.sleepHours === "number"
+                ? `${patient.planningInputs.sleepHours} hrs`
+                : "-"
+            }
+          />
+          <Info
+            label="Stress Level"
+            value={
+              typeof patient?.planningInputs?.stressLevel === "number"
+                ? `${patient.planningInputs.stressLevel}/5`
+                : "-"
+            }
+          />
+          <Info
+            label="Water Intake"
+            value={
+              typeof patient?.planningInputs?.waterIntakeLiters === "number"
+                ? `${patient.planningInputs.waterIntakeLiters} L/day`
+                : "-"
+            }
+          />
         </Section>
 
         <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 md:p-7">
@@ -1202,9 +1514,62 @@ function PatientDetails() {
 
 export default PatientDetails;
 
-function MealsList({ meals = [] }) {
+function MealsList({ meals = [], compact = false }) {
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+
+  useEffect(() => {
+    setSelectedDayIndex((current) =>
+      Math.min(current, Math.max((meals?.length || 1) - 1, 0))
+    );
+  }, [meals?.length]);
+
   if (!meals.length) {
     return <p className="text-sm text-gray-600">No meals added.</p>;
+  }
+
+  if (compact) {
+    const selectedMeal = meals[selectedDayIndex] || meals[0];
+
+    return (
+      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 md:p-6">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
+            Active Plan Days
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {meals.map((mealDay, index) => (
+              <button
+                key={`${mealDay.day}-${index}-active-selector`}
+                type="button"
+                onClick={() => setSelectedDayIndex(index)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  selectedDayIndex === index
+                    ? "bg-gray-900 text-white"
+                    : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {mealDay.day || `Day ${index + 1}`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">
+            {selectedMeal?.day || "Day Plan"}
+          </h3>
+          <div className="grid gap-3 md:grid-cols-3">
+            <MealDisplay
+              icon="Sunrise"
+              label="Breakfast"
+              value={selectedMeal?.breakfast}
+            />
+            <MealDisplay icon="Sun" label="Lunch" value={selectedMeal?.lunch} />
+            <MealDisplay icon="Moon" label="Dinner" value={selectedMeal?.dinner} />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1374,6 +1739,9 @@ function Info({ label, value }) {
     </div>
   );
 }
+
+
+
 
 
 

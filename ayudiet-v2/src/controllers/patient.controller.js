@@ -18,6 +18,7 @@ const addPatient = async (req, res, next) => {
       dietType,
       activityLevel,
       preferences,
+      planningInputs,
     } = req.body;
 
     if (!name || !age || !gender) {
@@ -39,6 +40,7 @@ const addPatient = async (req, res, next) => {
       dietType,
       activityLevel,
       preferences,
+      planningInputs,
       doctor: req.user.id,
     });
 

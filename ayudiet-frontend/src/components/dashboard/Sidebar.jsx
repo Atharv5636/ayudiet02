@@ -1,10 +1,15 @@
-import { LayoutDashboard, Users, Table2, Download, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Table2, Download, LogOut, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import logo from "../../assets/sidebar-logo.png";
 
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const DownloadIcon = Download;
+  const closeOnMobileOnly = () => {
+    if (window.innerWidth < 1024) {
+      onClose();
+    }
+  };
 
   const logout = () => {
     localStorage.removeItem("token");
@@ -42,7 +47,7 @@ function Sidebar({ isOpen, onClose }) {
           <button
             onClick={() => {
               navigate("/dashboard");
-              onClose();
+              closeOnMobileOnly();
             }}
             className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
           >
@@ -53,7 +58,7 @@ function Sidebar({ isOpen, onClose }) {
           <button
             onClick={() => {
               navigate("/dashboard/patients");
-              onClose();
+              closeOnMobileOnly();
             }}
             className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
           >
@@ -64,7 +69,7 @@ function Sidebar({ isOpen, onClose }) {
           <button
             onClick={() => {
               navigate("/dashboard/patients-table");
-              onClose();
+              closeOnMobileOnly();
             }}
             className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
           >
@@ -74,8 +79,19 @@ function Sidebar({ isOpen, onClose }) {
 
           <button
             onClick={() => {
+              navigate("/dashboard/add-patient");
+              closeOnMobileOnly();
+            }}
+            className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
+          >
+            <UserPlus size={18} />
+            Add Patient
+          </button>
+
+          <button
+            onClick={() => {
               navigate("/dashboard/download-plan");
-              onClose();
+              closeOnMobileOnly();
             }}
             className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
           >

@@ -1224,14 +1224,26 @@ const modifyPlanBasedOnProgress = async (patientId) => {
   const first = recentLogs[0] || {};
   const last = recentLogs[recentLogs.length - 1] || {};
 
-  const adherenceStart = first.adherence || 0;
-  const adherenceEnd = last.adherence || 0;
+  const toSafeNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
 
-  const weightStart = first.weight || 0;
-  const weightEnd = last.weight || 0;
+  const normalizeAdherence = (value) => {
+    if (typeof value === "boolean") {
+      return value ? 100 : 30;
+    }
+    return toSafeNumber(value, 0);
+  };
 
-  const energyStart = first.energyLevel || 0;
-  const energyEnd = last.energyLevel || 0;
+  const adherenceStart = normalizeAdherence(first.adherence);
+  const adherenceEnd = normalizeAdherence(last.adherence);
+
+  const weightStart = toSafeNumber(first.weight, 0);
+  const weightEnd = toSafeNumber(last.weight, 0);
+
+  const energyStart = toSafeNumber(first.energyLevel, 0);
+  const energyEnd = toSafeNumber(last.energyLevel, 0);
   const adherenceChange = adherenceEnd - adherenceStart;
   const energyChange = energyEnd - energyStart;
   const weightChange = weightEnd - weightStart;

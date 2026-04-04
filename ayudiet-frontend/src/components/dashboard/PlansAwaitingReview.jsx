@@ -92,6 +92,17 @@ function PlansAwaitingReview({
               typeof plan?.patient === "object"
                 ? plan?.patient?.name || "Unknown Patient"
                 : "Unknown Patient";
+            const planTitle =
+              typeof plan?.title === "string" && plan.title.trim()
+                ? plan.title.trim()
+                : "Untitled Plan";
+            const doshaLabel =
+              typeof plan?.doshaType === "string" && plan.doshaType.trim()
+                ? plan.doshaType.trim()
+                : "Not specified";
+            const createdDate = plan?.createdAt
+              ? new Date(plan.createdAt).toLocaleDateString()
+              : null;
             const trendDelta = getTrendDelta?.(plan) || "No delta";
 
             return (
@@ -100,9 +111,16 @@ function PlansAwaitingReview({
                 className="rounded-xl border border-gray-200 bg-white p-5"
               >
                 <div>
+                  <p className="text-sm font-semibold text-gray-800">
+                    Plan: {planTitle}
+                  </p>
                   <p className="text-lg font-semibold text-gray-900">{patientName}</p>
                   <p className="mt-1 text-sm text-gray-600">
                     {primaryIssue} - {formatTrendLabel?.(trend) || trend}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Dosha: {doshaLabel}
+                    {createdDate ? ` | Created: ${createdDate}` : ""}
                   </p>
                   <p className="text-sm text-gray-600">Duration: {formatPlanDuration?.(plan)}</p>
                   <p className="text-xs uppercase tracking-wide text-gray-400">{trendDelta}</p>

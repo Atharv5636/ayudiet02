@@ -411,6 +411,56 @@ const buildAiResponse = (
   progressInsights: progressSummary.insights,
 });
 
+const STRICT_LLM_BASE_URL =
+  process.env.STRICT_LLM_BASE_URL ||
+  process.env.LLM_BACKEND_URL ||
+  "https://ayudiet-llm-model.onrender.com";
+
+const STRICT_LLM_TIMEOUT_MS = Number(process.env.STRICT_LLM_TIMEOUT_MS || 25000);
+
+const callStrictLlmEndpoint = async (path, payload = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), STRICT_LLM_TIMEOUT_MS);
+  const llmApiKey = process.env.AYUDIET_LLM_API_KEY || process.env.AYUDIET_API_KEY;
+
+  try {
+    const response = await fetch(`${STRICT_LLM_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(llmApiKey ? { "X-API-Key": llmApiKey } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        data?.error?.message ||
+          data?.error ||
+          `Strict backend failed with status ${response.status}`
+      );
+    }
+
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new ApiError(504, "Strict backend timeout");
+    }
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(502, "Strict backend unavailable");
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 const ensureAnalysisInResponse = (plan) => {
   if (!plan) {
     return plan;
@@ -532,11 +582,17 @@ const attachAnalysisToPlan = async (
       isAnalysisStale(normalizedPlan.analysis))
   ) {
     console.log("Computing new analysis");
-    return computeAndPersistPlanAnalysis(normalizedPlan);
+    try {
+      return await computeAndPersistPlanAnalysis(normalizedPlan);
+    } catch (error) {
+      normalizedPlan.analysis = normalizedPlan.analysis || null;
+      console.log("Sending plan analysis:", normalizedPlan.analysis);
+      return normalizedPlan;
+    }
   }
 
   try {
-    return computeAndPersistPlanAnalysis(normalizedPlan);
+    return await computeAndPersistPlanAnalysis(normalizedPlan);
   } catch (error) {
     normalizedPlan.analysis = normalizedPlan.analysis || null;
     console.log("Sending plan analysis:", normalizedPlan.analysis);
@@ -721,6 +777,54 @@ const fixAiPlan = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+const strictProfileProxy = async (req, res, next) => {
+  try {
+    const payload = {
+      symptoms: req.body?.symptoms || "",
+    };
+    const data = await callStrictLlmEndpoint("/profile", payload);
+    res.status(200).json(data);
+  } catch (error) {
+    return res.status(200).json({
+      success: true,
+      data: {
+        risk_flags: ["none"],
+        dosha_estimate: {
+          vata: 0.33,
+          pitta: 0.33,
+          kapha: 0.34,
+        },
+        primary_dosha: "pitta",
+        confidence: 0.2,
+        fallback: true,
+      },
+      error: null,
+    });
+  }
+};
+
+const strictExplainProxy = async (req, res, next) => {
+  try {
+    const payload = {
+      symptoms: req.body?.symptoms || "",
+    };
+    const data = await callStrictLlmEndpoint("/explain", payload);
+    res.status(200).json(data);
+  } catch (error) {
+    return res.status(200).json({
+      success: true,
+      data: {
+        explanation: "insufficient context to provide safe explanation",
+        reasoning: ["fallback"],
+        confidence: 0.1,
+        sources: [],
+        fallback: true,
+      },
+      error: null,
+    });
   }
 };
 
@@ -1005,6 +1109,8 @@ module.exports = {
   generateAiPlan,
   generateAiDay,
   fixAiPlan,
+  strictProfileProxy,
+  strictExplainProxy,
   approvePlan,
   createPlan,
   updatePlan,

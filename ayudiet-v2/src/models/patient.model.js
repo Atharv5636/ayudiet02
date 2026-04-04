@@ -60,6 +60,34 @@ const patientSchema = new mongoose.Schema(
       type: [String],
     },
 
+    planningInputs: {
+      primaryGoal: {
+        type: String,
+        trim: true,
+      },
+      targetWeight: {
+        type: Number,
+      },
+      timeframeWeeks: {
+        type: Number,
+      },
+      mealPattern: {
+        type: String,
+        trim: true,
+      },
+      sleepHours: {
+        type: Number,
+      },
+      stressLevel: {
+        type: Number,
+        min: 1,
+        max: 5,
+      },
+      waterIntakeLiters: {
+        type: Number,
+      },
+    },
+
     phone: {
       type: String,
       trim: true,

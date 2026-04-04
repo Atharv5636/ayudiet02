@@ -8,6 +8,8 @@ const {
   generateAiPlan,
   generateAiDay,
   fixAiPlan,
+  strictProfileProxy,
+  strictExplainProxy,
   approvePlan,
   updatePlan,
   rejectPlan,
@@ -23,6 +25,8 @@ router.get("/patient/:patientId", getPlansByPatient);
 router.post("/generate-ai", generateAiPlan);
 router.post("/generate-day", generateAiDay);
 router.post("/fix-ai", fixAiPlan);
+router.post("/strict/profile", strictProfileProxy);
+router.post("/strict/explain", strictExplainProxy);
 router.post("/", createPlan);
 router.put("/:id", authMiddleware, updatePlan);
 router.patch("/:id/approve", approvePlan);

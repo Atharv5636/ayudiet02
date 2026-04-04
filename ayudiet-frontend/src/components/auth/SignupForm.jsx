@@ -3,31 +3,32 @@ import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
 
-function LoginForm() {
+function SignupForm() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setMessage("");
+    setIsSuccess(false);
 
     try {
-      const data = await fetchJson("/auth/login", {
+      await fetchJson("/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ name, email, password }),
       });
 
-      localStorage.setItem("token", data.token);
-      const doctorNameFromLogin =
-        data?.doctor?.name || (email.includes("@") ? email.split("@")[0] : "");
-      if (doctorNameFromLogin) {
-        localStorage.setItem("doctorName", doctorNameFromLogin);
-      }
-      navigate("/dashboard");
+      setIsSuccess(true);
+      setMessage("Account created successfully. Please log in.");
+      window.setTimeout(() => navigate("/login"), 900);
     } catch (error) {
+      setIsSuccess(false);
       setMessage(error.message || "Server error");
     }
   };
@@ -39,11 +40,25 @@ function LoginForm() {
     >
       <div className="mb-8">
         <h1 className="text-3xl font-semibold text-white tracking-tight">
-          Welcome Back
+          Create Account
         </h1>
         <p className="text-sm text-neutral-400 mt-2">
-          Continue your holistic health journey
+          Join AyuDiet to start guided care planning
         </p>
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-sm text-neutral-300 mb-2">Full name</label>
+        <input
+          type="text"
+          placeholder="Dr. Your Name"
+          className="w-full rounded-xl bg-neutral-800 px-4 py-3 text-white placeholder-neutral-500
+          outline-none border border-neutral-700
+          focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
       </div>
 
       <div className="mb-5">
@@ -85,21 +100,27 @@ function LoginForm() {
         hover:from-green-500 hover:to-emerald-400
         active:scale-[0.98] transition-all"
       >
-        Log In
+        Sign Up
       </button>
 
       {message && (
-        <p className="text-red-400 text-sm mt-5 text-center">{message}</p>
+        <p
+          className={`text-sm mt-5 text-center ${
+            isSuccess ? "text-green-400" : "text-red-400"
+          }`}
+        >
+          {message}
+        </p>
       )}
 
       <p className="mt-5 text-center text-sm text-neutral-400">
-        Don't have an account?{" "}
-        <Link to="/signup" className="text-emerald-400 hover:text-emerald-300">
-          Sign up
+        Already have an account?{" "}
+        <Link to="/login" className="text-emerald-400 hover:text-emerald-300">
+          Log in
         </Link>
       </p>
     </form>
   );
 }
 
-export default LoginForm;
+export default SignupForm;
