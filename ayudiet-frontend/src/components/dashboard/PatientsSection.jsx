@@ -23,6 +23,7 @@ function PatientsSection() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("doctorName");
     window.location.href = "/login";
   };
 

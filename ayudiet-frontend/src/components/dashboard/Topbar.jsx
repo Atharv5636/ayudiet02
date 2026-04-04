@@ -6,6 +6,7 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("doctorName");
     navigate("/login");
   };
 

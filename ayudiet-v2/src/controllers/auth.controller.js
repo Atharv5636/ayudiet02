@@ -74,7 +74,7 @@ const login = async (req, res, next) => {
 
     // 4. Generate JWT token (proof of login)
     const token = jwt.sign(
-      { id: doctor._id },
+      { id: doctor._id, name: doctor.name, email: doctor.email },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -84,6 +84,32 @@ const login = async (req, res, next) => {
       success: true,
       message: "Login successful",
       token,
+      doctor: {
+        id: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getMe = async (req, res, next) => {
+  try {
+    const doctor = await Doctor.findById(req.user.id).select("_id name email");
+
+    if (!doctor) {
+      return next(new ApiError(404, "Doctor not found"));
+    }
+
+    res.status(200).json({
+      success: true,
+      doctor: {
+        id: doctor._id,
+        name: doctor.name,
+        email: doctor.email,
+      },
     });
   } catch (error) {
     next(error);
@@ -94,4 +120,5 @@ const login = async (req, res, next) => {
 module.exports = {
   signup,
   login,
+  getMe,
 };

@@ -1,12 +1,14 @@
-import { LayoutDashboard, Users, Table2, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Table2, Download, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import logo from "../../assets/sidebar-logo.png";
 
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
+  const DownloadIcon = Download;
 
   const logout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("doctorName");
     navigate("/login");
   };
 
@@ -68,6 +70,17 @@ function Sidebar({ isOpen, onClose }) {
           >
             <Table2 size={18} />
             Patients Table
+          </button>
+
+          <button
+            onClick={() => {
+              navigate("/dashboard/download-plan");
+              onClose();
+            }}
+            className="flex w-full items-center gap-2 rounded-md p-2 text-gray-600 hover:bg-gray-100"
+          >
+            <DownloadIcon size={18} />
+            Download Plan
           </button>
 
           <button

@@ -20,6 +20,11 @@ function LoginForm() {
       });
 
       localStorage.setItem("token", data.token);
+      const doctorNameFromLogin =
+        data?.doctor?.name || (email.includes("@") ? email.split("@")[0] : "");
+      if (doctorNameFromLogin) {
+        localStorage.setItem("doctorName", doctorNameFromLogin);
+      }
       navigate("/dashboard");
     } catch (error) {
       setMessage(error.message || "Server error");
