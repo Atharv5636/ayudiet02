@@ -1,22 +1,40 @@
-export const API_BASE_URL = "http://localhost:3000";
+import api from "../utils/api";
 
-export async function parseJsonResponse(response) {
-  const contentType = response.headers.get("content-type") || "";
+export const API_BASE_URL = import.meta.env.VITE_API_URL;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
+const normalizeRequestData = (body, headers = {}) => {
+  if (body === undefined) {
+    return undefined;
   }
 
-  if (!contentType.includes("application/json")) {
-    const text = await response.text();
-    throw new Error(text || "Expected JSON response from server");
+  const contentType = headers["Content-Type"] || headers["content-type"] || "";
+  if (typeof body === "string" && contentType.includes("application/json")) {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return body;
+    }
   }
 
-  return response.json();
-}
+  return body;
+};
 
 export async function fetchJson(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
-  return parseJsonResponse(response);
+  try {
+    const response = await api.request({
+      url: path,
+      method: options.method || "GET",
+      headers: options.headers || {},
+      data: normalizeRequestData(options.body, options.headers),
+    });
+
+    return response.data;
+  } catch (error) {
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.error?.message ||
+      error?.message ||
+      "Request failed";
+    throw new Error(message);
+  }
 }

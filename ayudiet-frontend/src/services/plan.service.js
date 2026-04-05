@@ -1,17 +1,63 @@
-const BASE_URL = "http://localhost:3000/plans";
+import api from "../utils/api";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+const PLANS_BASE_PATH = "/plans";
 const STRICT_BACKEND_BASE_URLS = [
-  "http://localhost:3000/plans/strict",
+  `${API_BASE_URL}/plans/strict`,
   import.meta.env.VITE_LLM_BACKEND_URL,
   "https://ayudiet-llm-model.onrender.com",
 ].filter(Boolean);
 
 const STRICT_BACKEND_TIMEOUT_MS = 40000;
-const LOCAL_PROXY_TIMEOUT_MS = 70000;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
-
   return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const fetchPendingPlans = async () => {
+  const res = await api.get(`${PLANS_BASE_PATH}/pending`);
+  return res.data;
+};
+
+export const fetchPlansByPatient = async (patientId) => {
+  try {
+    const res = await api.get(`${PLANS_BASE_PATH}/patient/${patientId}`);
+    return res.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return { success: true, plans: [] };
+    }
+    throw new Error(error?.response?.data?.message || "Failed to fetch patient plans");
+  }
+};
+
+export const approvePlan = async (planId) => {
+  const res = await api.patch(`${PLANS_BASE_PATH}/${planId}/approve`);
+  return res.data;
+};
+
+export const rejectPlan = async (planId) => {
+  const res = await api.patch(`${PLANS_BASE_PATH}/${planId}/reject`);
+  return res.data;
+};
+
+export const createPlan = async (planPayload) => {
+  try {
+    const res = await api.post(PLANS_BASE_PATH, planPayload);
+    return res.data.plan;
+  } catch (error) {
+    throw new Error(error?.response?.data?.message || "Failed to create plan");
+  }
+};
+
+export const updatePlan = async (planId, planPayload) => {
+  try {
+    const res = await api.put(`${PLANS_BASE_PATH}/${planId}`, planPayload);
+    return res.data.plan;
+  } catch (error) {
+    throw new Error(error?.response?.data?.message || "Failed to update plan");
+  }
 };
 
 const readJsonSafe = async (res) => {
@@ -22,80 +68,6 @@ const readJsonSafe = async (res) => {
   }
 };
 
-export const fetchPendingPlans = async () => {
-  const res = await fetch(`${BASE_URL}/pending`, {
-    headers: getAuthHeaders(),
-  });
-  return res.json();
-};
-
-export const fetchPlansByPatient = async (patientId) => {
-  const res = await fetch(`${BASE_URL}/patient/${patientId}`, {
-    headers: getAuthHeaders(),
-  });
-
-  if (res.status === 404) {
-    return { success: true, plans: [] };
-  }
-
-  const data = await readJsonSafe(res);
-  if (!res.ok) {
-    throw new Error(data?.message || "Failed to fetch patient plans");
-  }
-
-  return data;
-};
-
-export const approvePlan = async (planId) => {
-  const res = await fetch(`${BASE_URL}/${planId}/approve`, {
-    method: "PATCH",
-    headers: getAuthHeaders(),
-  });
-  return res.json();
-};
-
-export const rejectPlan = async (planId) => {
-  const res = await fetch(`${BASE_URL}/${planId}/reject`, {
-    method: "PATCH",
-    headers: getAuthHeaders(),
-  });
-  return res.json();
-};
-
-export const createPlan = async (planPayload) => {
-  const res = await fetch(`${BASE_URL}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify(planPayload),
-  });
-
-  const data = await readJsonSafe(res);
-  if (!res.ok) {
-    throw new Error(data?.message || "Failed to create plan");
-  }
-  return data.plan;
-};
-
-export const updatePlan = async (planId, planPayload) => {
-  const res = await fetch(`${BASE_URL}/${planId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify(planPayload),
-  });
-
-  const data = await readJsonSafe(res);
-  if (!res.ok) {
-    throw new Error(data?.message || "Failed to update plan");
-  }
-  return data.plan;
-};
-
 const postToStrictBackend = async (path, payload) => {
   let lastError = new Error("Strict backend unavailable");
 
@@ -103,21 +75,14 @@ const postToStrictBackend = async (path, payload) => {
     let timeoutId;
     try {
       const controller = new AbortController();
-      const timeoutMs = baseUrl.startsWith("http://localhost:3000")
-        ? LOCAL_PROXY_TIMEOUT_MS
-        : STRICT_BACKEND_TIMEOUT_MS;
-      timeoutId = setTimeout(
-        () => controller.abort(),
-        timeoutMs
-      );
+      timeoutId = setTimeout(() => controller.abort(), STRICT_BACKEND_TIMEOUT_MS);
+      const shouldAttachBearer = baseUrl.startsWith(API_BASE_URL);
 
       const res = await fetch(`${baseUrl}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(baseUrl.startsWith("http://localhost:3000")
-            ? getAuthHeaders()
-            : {}),
+          ...(shouldAttachBearer ? getAuthHeaders() : {}),
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -127,8 +92,7 @@ const postToStrictBackend = async (path, payload) => {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = await res.json();
-
+      const data = await readJsonSafe(res);
       if (!data.success) {
         throw new Error(data.error?.message || data.error || "Backend failed");
       }
