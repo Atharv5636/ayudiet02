@@ -8,6 +8,16 @@ const connectDB = async () => {
       throw new Error("Missing MONGO_URI. Add it to your .env file.");
     }
 
+    if (
+      !process.env.MONGO_URI.includes("mongodb+srv://") ||
+      !process.env.MONGO_URI.includes(".mongodb.net")
+    ) {
+      console.error("Invalid MongoDB URI format");
+      process.exit(1);
+    }
+
+    console.log("Using DB:", process.env.MONGO_URI.split("@")[1]);
+
     if (!eventsRegistered) {
       mongoose.connection.on("connected", () => {
         console.log("Mongoose connected");
