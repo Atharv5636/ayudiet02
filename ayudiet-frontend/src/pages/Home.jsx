@@ -55,7 +55,7 @@ function Home() {
 
   return (
     <div
-      className="min-h-screen text-[#1f2937] scroll-smooth"
+      className="min-h-screen overflow-x-hidden text-[#1f2937] scroll-smooth"
       style={{
         backgroundImage: `url(${frameBg})`,
         backgroundSize: "cover",
@@ -65,22 +65,22 @@ function Home() {
       }}
     >
       <header className="sticky top-0 z-30 border-b border-[#e8e2d6] bg-white/95 backdrop-blur">
-        <div className="flex h-20 w-full items-center justify-between px-6 lg:px-10">
+        <div className="flex min-h-16 w-full items-center justify-between gap-3 px-3 py-2 sm:px-5 lg:h-20 lg:px-10">
           <div className="flex items-center gap-3">
-            <img src={logo} alt="AyuDiet" className="h-12 w-auto object-contain" />
-            <span className="text-3xl font-semibold tracking-tight text-[#1f2937]">AyuDiet</span>
+            <img src={logo} alt="AyuDiet" className="h-9 w-auto object-contain sm:h-10 lg:h-12" />
+            <span className="text-xl font-semibold tracking-tight text-[#1f2937] sm:text-2xl lg:text-3xl">AyuDiet</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to="/login"
-              className="rounded-full border border-[#66a54c] px-6 py-2 text-base font-semibold text-[#2f6b2f] transition hover:bg-[#eff7ea]"
+              className="rounded-full border border-[#66a54c] px-3 py-1.5 text-sm font-semibold text-[#2f6b2f] transition hover:bg-[#eff7ea] sm:px-6 sm:py-2 sm:text-base"
             >
               Login
             </Link>
             <Link
               to="/signup"
-              className="rounded-full bg-[#68ad4f] px-6 py-2 text-base font-semibold text-white transition hover:bg-[#5a9d43]"
+              className="rounded-full bg-[#68ad4f] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#5a9d43] sm:px-6 sm:py-2 sm:text-base"
             >
               Signup
             </Link>
@@ -89,43 +89,43 @@ function Home() {
       </header>
 
       <main id="home" className="relative overflow-hidden">
-        <div className="mx-auto grid min-h-[76vh] w-full max-w-7xl grid-cols-1 items-center gap-12 px-6 py-12 lg:grid-cols-2">
-          <section className="max-w-2xl rounded-2xl bg-white/72 p-6 backdrop-blur-[1px] md:p-8">
-            <h1 className="text-4xl font-semibold leading-tight text-[#202938] md:text-5xl">
+        <div className="mx-auto grid min-h-[76vh] w-full max-w-7xl grid-cols-1 items-center gap-8 px-4 py-8 sm:px-6 sm:py-12 lg:grid-cols-2">
+          <section className="max-w-2xl rounded-2xl bg-white/72 p-4 backdrop-blur-[1px] sm:p-6 md:p-8">
+            <h1 className="text-3xl font-semibold leading-tight text-[#202938] sm:text-4xl md:text-5xl">
               AI-Powered Clinical
               <br />
               Ayurveda Platform
             </h1>
 
-            <p className="mt-5 text-2xl leading-snug text-[#0f6f58] md:text-3xl">
+            <p className="mt-4 text-xl leading-snug text-[#0f6f58] sm:text-2xl md:mt-5 md:text-3xl">
               हित मितं च रुच्यं च भोजनं सप्तधातुभृत्।
             </p>
 
-            <ul className="mt-7 space-y-3 text-lg leading-relaxed text-[#0f172a] md:text-xl">
+            <ul className="mt-6 space-y-3 text-base leading-relaxed text-[#0f172a] sm:text-lg md:mt-7 md:text-xl">
               <li>• Reduce patient assessment time by 70% with AI constitution analysis</li>
               <li>• Access 5,000+ foods with classical citations + modern research</li>
               <li>• Improve adherence with personalized dosha-based planning</li>
               <li>• Evidence transparency for every recommendation</li>
             </ul>
 
-            <div className="mt-8 flex flex-wrap items-center gap-4">
+            <div className="mt-7 flex flex-col items-stretch gap-3 sm:mt-8 sm:flex-row sm:items-center sm:gap-4">
               <Link
                 to="/signup"
-                className="rounded-full bg-[#68ad4f] px-7 py-3 text-base font-semibold text-white transition hover:bg-[#5a9d43] md:text-lg"
+                className="w-full rounded-full bg-[#68ad4f] px-7 py-3 text-center text-base font-semibold text-white transition hover:bg-[#5a9d43] sm:w-auto md:text-lg"
               >
                 START FREE TRIAL
               </Link>
               <a
                 href="#services"
-                className="rounded-full bg-[#68ad4f] px-7 py-3 text-base font-semibold text-white transition hover:bg-[#5a9d43] md:text-lg"
+                className="w-full rounded-full bg-[#68ad4f] px-7 py-3 text-center text-base font-semibold text-white transition hover:bg-[#5a9d43] sm:w-auto md:text-lg"
               >
                 EXPLORE FEATURES
               </a>
             </div>
           </section>
 
-          <section className="flex flex-col items-center justify-center lg:translate-x-16">
-            <div className="relative h-[24rem] w-full max-w-xl md:h-[30rem]">
+          <section className="flex flex-col items-center justify-center lg:translate-x-10 xl:translate-x-16">
+            <div className="relative h-64 w-full max-w-xl sm:h-80 md:h-[30rem]">
               {heroSlides.map((slide, index) => (
                 <img
                   key={slide.alt}
@@ -159,13 +159,13 @@ function Home() {
         </div>
       </main>
 
-      <section id="about" className="mx-auto w-full max-w-7xl px-6 py-10">
-        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-8">
+      <section id="about" className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-5 sm:p-8">
           <p className="text-sm uppercase tracking-[0.2em] text-[#6b7280]">About Platform</p>
-          <h2 className="mt-2 text-3xl font-semibold text-[#1f2937]">
+          <h2 className="mt-2 text-2xl font-semibold text-[#1f2937] sm:text-3xl">
             Built For Modern Ayurvedic Practice
           </h2>
-          <p className="mt-4 text-lg leading-relaxed text-[#374151]">
+          <p className="mt-4 text-base leading-relaxed text-[#374151] sm:text-lg">
             AyuDiet combines structured patient data capture, actionable diet planning,
             and progression-based review. It helps doctors reduce manual overhead while
             preserving clinical judgment and personalization.
@@ -173,10 +173,10 @@ function Home() {
         </div>
       </section>
 
-      <section id="services" className="mx-auto w-full max-w-7xl px-6 py-4">
-        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-8">
+      <section id="services" className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
+        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-5 sm:p-8">
           <p className="text-sm uppercase tracking-[0.2em] text-[#6b7280]">Services</p>
-          <h2 className="mt-2 text-3xl font-semibold text-[#1f2937]">Core Capabilities</h2>
+          <h2 className="mt-2 text-2xl font-semibold text-[#1f2937] sm:text-3xl">Core Capabilities</h2>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {platformHighlights.map((item) => (
@@ -189,10 +189,10 @@ function Home() {
         </div>
       </section>
 
-      <section id="plans" className="mx-auto w-full max-w-7xl px-6 py-10">
-        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-8">
+      <section id="plans" className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="rounded-2xl border border-[#d8d1bf] bg-white/80 p-5 sm:p-8">
           <p className="text-sm uppercase tracking-[0.2em] text-[#6b7280]">Nutrition Plans</p>
-          <h2 className="mt-2 text-3xl font-semibold text-[#1f2937]">Simple Clinical Workflow</h2>
+          <h2 className="mt-2 text-2xl font-semibold text-[#1f2937] sm:text-3xl">Simple Clinical Workflow</h2>
           <div className="mt-6 space-y-4">
             {workflowSteps.map((step, index) => (
               <div key={step} className="flex items-start gap-3 rounded-xl border border-[#e5dfcf] bg-[#fbfaf6] p-4">
@@ -206,25 +206,25 @@ function Home() {
         </div>
       </section>
 
-      <section id="contact" className="mx-auto w-full max-w-7xl px-6 pb-14 pt-2">
-        <div className="rounded-2xl border border-[#d8d1bf] bg-white/85 p-8 text-center">
-          <h2 className="text-3xl font-semibold text-[#1f2937]">
+      <section id="contact" className="mx-auto w-full max-w-7xl px-4 pb-10 pt-2 sm:px-6 sm:pb-14">
+        <div className="rounded-2xl border border-[#d8d1bf] bg-white/85 p-5 text-center sm:p-8">
+          <h2 className="text-2xl font-semibold text-[#1f2937] sm:text-3xl">
             Ready To Streamline Diet Planning?
           </h2>
-          <p className="mx-auto mt-3 max-w-3xl text-lg text-[#4b5563]">
+          <p className="mx-auto mt-3 max-w-3xl text-base text-[#4b5563] sm:text-lg">
             Start with a structured, professional workflow that supports both physician
             efficiency and patient adherence.
           </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+          <div className="mt-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-4">
             <Link
               to="/signup"
-              className="rounded-full bg-[#68ad4f] px-7 py-3 text-base font-semibold text-white transition hover:bg-[#5a9d43]"
+              className="w-full rounded-full bg-[#68ad4f] px-7 py-3 text-base font-semibold text-white transition hover:bg-[#5a9d43] sm:w-auto"
             >
               Create Account
             </Link>
             <Link
               to="/login"
-              className="rounded-full border border-[#66a54c] px-7 py-3 text-base font-semibold text-[#2f6b2f] transition hover:bg-[#eff7ea]"
+              className="w-full rounded-full border border-[#66a54c] px-7 py-3 text-base font-semibold text-[#2f6b2f] transition hover:bg-[#eff7ea] sm:w-auto"
             >
               Log In
             </Link>

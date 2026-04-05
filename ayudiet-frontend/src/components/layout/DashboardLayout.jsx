@@ -27,7 +27,7 @@ function DashboardLayout() {
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         />
 
-        <main className="flex-1 w-full bg-[#F5F5F4] px-6 py-8 lg:px-10">
+        <main className="flex-1 w-full bg-[#F5F5F4] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
           <div className="w-full">
             <Outlet context={{ search }} />
           </div>

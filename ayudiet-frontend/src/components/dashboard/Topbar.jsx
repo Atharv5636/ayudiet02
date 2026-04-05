@@ -67,12 +67,10 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
   };
 
   return (
-    <header
-      className="sticky top-0 z-40 h-16 px-6 flex items-center justify-between
-      bg-white border-b border-gray-200"
-    >
-      {/* LEFT */}
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white px-3 py-3 sm:px-6">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        {/* LEFT */}
+        <div className="order-1 flex items-center gap-3">
         <button
           type="button"
           aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
@@ -82,11 +80,11 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
           {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
 
-        <h1 className="text-sm text-gray-600">Welcome back, Doctor</h1>
-      </div>
+          <h1 className="hidden text-sm text-gray-600 sm:block">Welcome back, Doctor</h1>
+        </div>
 
-      {/* CENTER: SEARCH */}
-      <div className="relative w-64">
+        {/* CENTER: SEARCH */}
+        <div className="relative order-3 w-full md:order-2 md:w-64">
         <input
           type="text"
           placeholder="Search patients..."
@@ -131,15 +129,16 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
             )}
           </div>
         )}
-      </div>
+        </div>
 
-      {/* RIGHT */}
-      <button
-        onClick={handleLogout}
-        className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 transition hover:bg-black hover:text-white"
-      >
-        Logout
-      </button>
+        {/* RIGHT */}
+        <button
+          onClick={handleLogout}
+          className="order-2 ml-auto rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition hover:bg-black hover:text-white md:order-3"
+        >
+          Logout
+        </button>
+      </div>
     </header>
   );
 }

@@ -3,8 +3,8 @@ import SignupForm from "../components/auth/SignupForm";
 function Signup() {
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-      <div className="min-h-screen w-full flex items-center justify-center px-6">
-        <div className="grid w-full max-w-6xl grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <div className="min-h-screen w-full flex items-center justify-center px-4 sm:px-6">
+        <div className="grid w-full max-w-6xl grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
           <div className="flex justify-center">
             <SignupForm />
           </div>
