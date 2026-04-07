@@ -27,6 +27,25 @@ const patientSchema = new mongoose.Schema(
       type: Number, // kg
     },
 
+    dateOfBirth: {
+      type: Date,
+    },
+
+    bloodGroup: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+    },
+
+    emergencyContactName: {
+      type: String,
+      trim: true,
+    },
+
+    emergencyContactPhone: {
+      type: String,
+      trim: true,
+    },
+
     healthConditions: {
       type: String,
     },
@@ -123,6 +142,60 @@ const patientSchema = new mongoose.Schema(
         },
       },
     ],
+
+    documents: [
+      {
+        originalName: {
+          type: String,
+          trim: true,
+        },
+        filename: {
+          type: String,
+          trim: true,
+        },
+        mimeType: {
+          type: String,
+          trim: true,
+        },
+        size: {
+          type: Number,
+        },
+        url: {
+          type: String,
+          trim: true,
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    photo: {
+      originalName: {
+        type: String,
+        trim: true,
+      },
+      filename: {
+        type: String,
+        trim: true,
+      },
+      mimeType: {
+        type: String,
+        trim: true,
+      },
+      size: {
+        type: Number,
+      },
+      url: {
+        type: String,
+        trim: true,
+      },
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
 
     doctor: {
       type: mongoose.Schema.Types.ObjectId,

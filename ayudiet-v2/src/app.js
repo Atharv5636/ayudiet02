@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 
 const healthRoutes = require("./routes/health.routes");
 const authRoutes = require("./routes/auth.routes");
@@ -13,19 +14,36 @@ const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 
 const debugLogsEnabled = process.env.DEBUG_LOGS === "true";
-const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_ORIGIN || "")
-  .split(",")
-  .map((origin) => origin.trim())
+const normalizeOrigin = (value) => {
+  if (!value || typeof value !== "string") return "";
+
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed;
+  }
+};
+
+const allowedOrigins = [
+  ...(process.env.CORS_ORIGIN || "").split(","),
+  ...(process.env.FRONTEND_ORIGIN || "").split(","),
+]
+  .map(normalizeOrigin)
   .filter(Boolean);
 
 const corsOptions = {
   origin(origin, callback) {
+    const requestOrigin = normalizeOrigin(origin);
+
     // Allow server-to-server or curl requests with no Origin header.
-    if (!origin) {
+    if (!requestOrigin) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(requestOrigin)) {
       return callback(null, true);
     }
 
@@ -34,9 +52,14 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    const error = new Error(`CORS blocked for origin: ${requestOrigin}`);
+    error.statusCode = 403;
+    return callback(error);
   },
   credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
 };
 
 app.set("trust proxy", 1);
@@ -54,6 +77,7 @@ if (debugLogsEnabled) {
 app.get("/", (req, res) => {
   res.send("API is running");
 });
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // routes
 app.use("/health", healthRoutes);

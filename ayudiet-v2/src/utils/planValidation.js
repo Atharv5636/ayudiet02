@@ -38,6 +38,20 @@ const DOSHA_RESTRICTIONS = {
   pitta: ["chili", "fried", "pickle", "spicy curry"],
   kapha: ["deep fried", "cream", "cheese burst", "sugar syrup"],
 };
+const MEAL_VALIDATION_KEYWORDS = [
+  ...PROTEIN_KEYWORDS,
+  ...CARB_KEYWORDS,
+  "khichdi",
+  "sabzi",
+  "vegetable",
+  "soup",
+  "salad",
+  "fruit",
+  "chilla",
+  "porridge",
+  "stew",
+  "quinoa",
+];
 
 const PROTEIN_OPTIONS = ["moong dal soup", "paneer bhurji", "tofu curry"];
 const LIGHTER_OPTIONS = ["vegetable soup", "sauteed greens", "millet khichdi"];
@@ -78,6 +92,39 @@ const validatePlan = (meals = [], doshaType = "") => {
   let score = 10;
 
   const normalizedEntries = mealEntries(meals);
+  const hasMealEntries = normalizedEntries.length > 0;
+
+  if (!hasMealEntries) {
+    return {
+      score: null,
+      issues: [],
+      suggestions: [],
+      hasMealEntries: false,
+    };
+  }
+
+  const totalSlots = Math.max(1, meals.length * 3);
+  const filledSlots = meals.reduce((count, mealDay) => {
+    const slots = [mealDay?.breakfast, mealDay?.lunch, mealDay?.dinner];
+    return count + slots.filter((slot) => normalizeMealText(slot)).length;
+  }, 0);
+  const completionRatio = filledSlots / totalSlots;
+  if (completionRatio < 1) {
+    const completionPenalty = Math.max(2, Math.round((1 - completionRatio) * 6));
+    issues.push("Plan is incomplete across day slots");
+    suggestions.push("Fill breakfast, lunch, and dinner for each planned day");
+    score -= completionPenalty;
+  }
+
+  const unrecognizedMeals = normalizedEntries.filter(
+    (meal) => !includesAnyKeyword(meal, MEAL_VALIDATION_KEYWORDS)
+  );
+  if (unrecognizedMeals.length) {
+    issues.push("Some meal entries are not recognizable food names");
+    suggestions.push("Use clear dish names like moong dal, khichdi, tofu curry, etc.");
+    score -= Math.min(4, unrecognizedMeals.length);
+  }
+
   const uniqueEntries = new Set(normalizedEntries);
 
   if (normalizedEntries.length && uniqueEntries.size < normalizedEntries.length) {
@@ -105,6 +152,11 @@ const validatePlan = (meals = [], doshaType = "") => {
     const slots = [mealDay.breakfast, mealDay.lunch, mealDay.dinner].map(
       normalizeMealText
     );
+    const hasAnyMeal = slots.some(Boolean);
+
+    if (!hasAnyMeal) {
+      return false;
+    }
 
     return !slots.some((slot) => includesAnyKeyword(slot, PROTEIN_KEYWORDS));
   });
@@ -130,6 +182,7 @@ const validatePlan = (meals = [], doshaType = "") => {
     score: Math.max(0, Math.min(10, score)),
     issues,
     suggestions,
+    hasMealEntries: true,
   };
 };
 

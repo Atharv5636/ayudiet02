@@ -2,28 +2,40 @@ require("dotenv").config();
 
 const app = require("./app");
 const connectDB = require("./config/db");
+const { validateRuntimeEnv } = require("./config/env");
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 const validateEnv = () => {
-  const required = ["MONGO_URI", "JWT_SECRET"];
-  const missing = required.filter((key) => !process.env[key]);
+  const result = validateRuntimeEnv(process.env);
 
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  if (result.warnings.length > 0) {
+    result.warnings.forEach((warning) => {
+      console.warn(`[ENV WARNING] ${warning}`);
+    });
   }
 
-  if (
-    process.env.NODE_ENV === "production" &&
-    !process.env.CORS_ORIGIN &&
-    !process.env.FRONTEND_ORIGIN
-  ) {
-    throw new Error("Set CORS_ORIGIN (or FRONTEND_ORIGIN) in production");
+  if (result.errors.length > 0) {
+    throw new Error(result.errors.join(" "));
   }
 
-  if (process.env.JWT_SECRET === "change_this_to_a_secure_random_secret") {
-    throw new Error("JWT_SECRET is using a placeholder value. Set a strong secret.");
-  }
+  const aiProviders =
+    result.summary.configuredAiKeys.length > 0
+      ? result.summary.configuredAiKeys
+          .map((entry) => `${entry.key}:${entry.masked}`)
+          .join(", ")
+      : "none";
+
+  console.log(
+    [
+      "Environment checks passed:",
+      `node=${result.summary.nodeEnv}`,
+      `cors=${result.summary.corsOrigin}`,
+      `mealsModel=${result.summary.mealsModel}`,
+      `mealsBase=${result.summary.mealsBaseUrl}`,
+      `aiKeys=${aiProviders}`,
+    ].join(" ")
+  );
 };
 
 const startServer = async () => {

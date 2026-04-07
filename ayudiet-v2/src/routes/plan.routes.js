@@ -5,11 +5,13 @@ const {
   createPlan,
   getPlansByPatient,
   getPendingPlans,
+  getActivePlans,
   generateAiPlan,
   generateAiDay,
   fixAiPlan,
   strictProfileProxy,
   strictExplainProxy,
+  strictChatProxy,
   approvePlan,
   updatePlan,
   rejectPlan,
@@ -21,12 +23,14 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get("/pending", getPendingPlans);
+router.get("/active", getActivePlans);
 router.get("/patient/:patientId", getPlansByPatient);
 router.post("/generate-ai", generateAiPlan);
 router.post("/generate-day", generateAiDay);
 router.post("/fix-ai", fixAiPlan);
 router.post("/strict/profile", strictProfileProxy);
 router.post("/strict/explain", strictExplainProxy);
+router.post("/strict/chat", strictChatProxy);
 router.post("/", createPlan);
 router.put("/:id", updatePlan);
 router.patch("/:id/approve", approvePlan);

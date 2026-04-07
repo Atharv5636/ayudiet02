@@ -4,6 +4,7 @@ const ApiError = require("../utils/ApiError");
 const Patient = require("../models/patient.model");
 const Plan = require("../models/plan.model");
 const ProgressLog = require("../models/progressLog.model");
+const { validatePlan } = require("../utils/planValidation");
 const debugLogsEnabled = process.env.DEBUG_LOGS === "true";
 const debugLog = (...args) => {
   if (debugLogsEnabled) {
@@ -102,6 +103,7 @@ const REVERSE_CHANGE_TYPES = {
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const roundScore = (value) => Math.round(clamp(value, 0, 100));
 
 const average = (values = []) =>
   values.length
@@ -110,12 +112,38 @@ const average = (values = []) =>
       )
     : null;
 
+const getObjectIdTimestamp = (value) => {
+  if (!value) return Number.NaN;
+  const source = typeof value === "string" ? value : String(value);
+  if (!source || source.length < 8) return Number.NaN;
+  const parsed = Number.parseInt(source.slice(0, 8), 16);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return parsed * 1000;
+};
+
+const getLogSortTimestamp = (log = {}) => {
+  const objectIdTime = getObjectIdTimestamp(log?._id);
+  if (Number.isFinite(objectIdTime)) return objectIdTime;
+
+  const createdAtTime = new Date(log?.createdAt || 0).getTime();
+  if (Number.isFinite(createdAtTime) && createdAtTime > 0) return createdAtTime;
+
+  const recordedAtTime = new Date(log?.recordedAt || 0).getTime();
+  if (Number.isFinite(recordedAtTime) && recordedAtTime > 0) return recordedAtTime;
+
+  return 0;
+};
+
 const sortLogsAscending = (logs = []) =>
   [...logs].sort(
-    (left, right) =>
-      new Date(left.createdAt || left.recordedAt || 0).getTime() -
-      new Date(right.createdAt || right.recordedAt || 0).getTime()
+    (left, right) => getLogSortTimestamp(left) - getLogSortTimestamp(right)
   );
+
+const persistPlanIfDocument = async (plan) => {
+  if (plan && typeof plan.save === "function") {
+    await plan.save();
+  }
+};
 
 const normalizeEnergy = (level) => {
   if (typeof level !== "number" || Number.isNaN(level)) {
@@ -160,12 +188,14 @@ const normalizeAdherence = (value) => {
 };
 
 const normalizeProgressLog = (log = {}) => ({
+  _id: log._id || null,
   weight: typeof log.weight === "number" ? log.weight : null,
   energyLevel: normalizeEnergy(log.energyLevel ?? log.energy),
   adherence: normalizeAdherence(log.adherence),
   digestionScore: normalizeDigestion(log.digestionScore ?? log.digestion),
   notes: log.notes || log.note || "",
-  createdAt: log.createdAt || log.recordedAt || null,
+  recordedAt: log.recordedAt || null,
+  createdAt: log.createdAt || null,
 });
 
 const getRecentProgressLogs = async (patientId, activePlanId) => {
@@ -173,7 +203,7 @@ const getRecentProgressLogs = async (patientId, activePlanId) => {
     patient: patientId,
     ...(activePlanId ? { plan: activePlanId } : {}),
   })
-    .sort({ createdAt: -1 })
+    .sort({ _id: -1, createdAt: -1, recordedAt: -1 })
     .limit(MAX_LOGS)
     .lean();
 
@@ -473,8 +503,6 @@ const buildRuleExplanation = (
     effectivenessTrend,
     confidence
   )}`.trim();
-
-const roundScore = (value) => Math.round(clamp(value, 0, 100));
 
 const classifyEffectiveness = (score) => {
   if (score >= 80) {
@@ -1057,269 +1085,89 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     throw new ApiError(404, "Patient not found");
   }
 
-  const activePlan = await Plan.findOne({
+  const activePlanQuery = Plan.findOne({
     patient: patientId,
     isActive: true,
   });
+  let activePlan = await activePlanQuery;
+
+  if (
+    activePlan &&
+    typeof activePlan.lean === "function" &&
+    (activePlan._id === undefined || activePlan._id === null)
+  ) {
+    activePlan = await activePlan.lean();
+  }
 
   if (!activePlan) {
     throw new ApiError(404, "Active plan not found");
   }
 
-  const progressLogs = await ProgressLog.find({ patient: patientId })
-    .sort({ createdAt: 1, recordedAt: 1 })
-    .lean();
-
-  if (!progressLogs.length) {
-    const noDataAnalysis = {
-      effectiveness: 0,
-      trend: "No Data",
-      primaryIssue: "No logs available",
-      reason: "No progress logs available",
-    };
-    const adjustments = [];
-
-    activePlan.analysis = {
-      ...noDataAnalysis,
-      computedAt: new Date(),
-    };
-    activePlan.adjustments = adjustments;
-    await activePlan.save();
-
-    return {
-      patientId: String(patient._id),
-      planId: String(activePlan._id),
-      logCount: 0,
-      analysis: noDataAnalysis,
-      appliedRule: null,
-      changes: [],
-    };
-  }
-
-  const normalizedLogs = sortLogsAscending(progressLogs.map(normalizeProgressLog));
-
-  const adherenceValues = normalizedLogs
-    .map((log) => log.adherence)
-    .filter((value) => typeof value === "number");
-  const energyValues = normalizedLogs
-    .map((log) => log.energyLevel)
-    .filter((value) => typeof value === "number");
-  const weightValues = normalizedLogs
-    .map((log) => log.weight)
-    .filter((value) => typeof value === "number");
-
-  const avgAdherence =
-    adherenceValues.length > 0
-      ? adherenceValues.reduce((sum, value) => sum + value, 0) / adherenceValues.length
-      : 0;
-  const avgEnergy =
-    energyValues.length > 0
-      ? energyValues.reduce((sum, value) => sum + value, 0) / energyValues.length
-      : 0;
-  const overallWeightChange =
-    weightValues.length > 1
-      ? weightValues[weightValues.length - 1] - weightValues[0]
-      : 0;
-
-  const adherenceScore = clamp(avgAdherence, 0, 100);
-  const energyScore = clamp((avgEnergy / ENERGY_SCALE_MAX) * 100, 0, 100);
-  const weightScore = clamp(Math.abs(overallWeightChange) * 20, 0, 100);
-
-  const effectiveness = Math.round(
-    adherenceScore * 0.5 + energyScore * 0.3 + weightScore * 0.2
+  const progressLogs = await getRecentProgressLogs(patientId, activePlan?._id);
+  const normalizedLogs = sortLogsAscending((progressLogs || []).map(normalizeProgressLog));
+  const analysisSignals = analyzeProgressSignals(normalizedLogs);
+  const enoughLogs = normalizedLogs.length >= MIN_LOGS;
+  const lastAdjustment = getLastAdjustment(activePlan);
+  const primaryIssue = detectPrimaryIssue(analysisSignals);
+  const effectivenessTrend = computeEffectivenessTrend(
+    normalizedLogs,
+    analysisSignals,
+    { primaryIssue }
   );
 
-  const splitIndex = Math.floor(normalizedLogs.length / 2);
-  const firstHalf = normalizedLogs.slice(0, splitIndex);
-  const secondHalf = normalizedLogs.slice(splitIndex);
+  const { appliedRule, changes } = enoughLogs
+    ? selectPriorityChanges(
+        analysisSignals,
+        activePlan?.meals || [],
+        effectivenessTrend,
+        lastAdjustment
+      )
+    : { appliedRule: null, changes: [] };
 
-  const firstHalfAdherenceValues = firstHalf
-    .map((log) => log.adherence)
-    .filter((value) => typeof value === "number");
-  const secondHalfAdherenceValues = secondHalf
-    .map((log) => log.adherence)
-    .filter((value) => typeof value === "number");
+  const analysis = buildExplainableAnalysis(
+    analysisSignals,
+    appliedRule,
+    enoughLogs,
+    effectivenessTrend
+  );
 
-  const firstHalfAvgAdherence =
-    firstHalfAdherenceValues.length > 0
-      ? firstHalfAdherenceValues.reduce((sum, value) => sum + value, 0) /
-        firstHalfAdherenceValues.length
-      : 0;
-  const secondHalfAvgAdherence =
-    secondHalfAdherenceValues.length > 0
-      ? secondHalfAdherenceValues.reduce((sum, value) => sum + value, 0) /
-        secondHalfAdherenceValues.length
-      : 0;
-
-  const adherenceDelta = secondHalfAvgAdherence - firstHalfAvgAdherence;
-  let trend = "Stable";
-
-  if (adherenceDelta > 5) {
-    trend = "Improving";
-  } else if (adherenceDelta < -5) {
-    trend = "Declining";
-  }
-
-  const trendScore = adherenceDelta;
-  const isImproving = trend === "Improving";
-  const isDeclining = trend === "Declining";
-  let debugCombinedScore = 0;
-
-  if (trendScore > 5) debugCombinedScore += 2;
-  else if (trendScore < -5) debugCombinedScore -= 2;
-
-  if (isImproving) debugCombinedScore += 1;
-  else if (isDeclining) debugCombinedScore -= 1;
-
-  let expectedTrend = "Stable";
-
-  if (debugCombinedScore >= 2) {
-    expectedTrend = "Improving";
-  } else if (debugCombinedScore <= -2) {
-    expectedTrend = "Declining";
-  } else {
-    expectedTrend = "Stable";
-  }
-
-  const isCorrect = expectedTrend === trend;
-
-  const adherenceSignal =
-    trendScore > 5 ? "Positive" : trendScore < -5 ? "Negative" : "Neutral";
-  const weightSignal =
-    isImproving ? "Positive" : isDeclining ? "Negative" : "Neutral";
-
-  debugLog("=== DEBUG ANALYSIS ===");
-  debugLog({
-    patientId: String(patientId),
-    avgAdherence,
-    avgEnergy,
-    weightChange: overallWeightChange,
-    trendScore,
-    adherenceSignal,
-    isImproving,
-    isDeclining,
-    weightSignal,
-    debugCombinedScore,
-    expectedTrend,
-    actualTrend: trend,
-    isCorrect,
-  });
-  if (!isCorrect) {
-    debugLog("Trend mismatch detected");
-  } else {
-    debugLog("Trend logic correct");
-  }
-  debugLog("======================");
-
-  let primaryIssue = "-";
-  if (avgAdherence < 60) {
-    primaryIssue = "Low adherence";
-  } else if (avgEnergy < 2.5) {
-    primaryIssue = "Low energy";
-  } else if (Math.abs(overallWeightChange) < 0.5) {
-    primaryIssue = "No progress";
-  }
-
-  const computedAnalysis = {
-    effectiveness,
-    trend,
-    primaryIssue,
-  };
-  let adjustments = [];
-  const recentLogs = progressLogs.slice(-5);
-  const first = recentLogs[0] || {};
-  const last = recentLogs[recentLogs.length - 1] || {};
-
-  const toSafeNumber = (value, fallback = 0) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-
-  const normalizeAdherence = (value) => {
-    if (typeof value === "boolean") {
-      return value ? 100 : 30;
-    }
-    return toSafeNumber(value, 0);
-  };
-
-  const adherenceStart = normalizeAdherence(first.adherence);
-  const adherenceEnd = normalizeAdherence(last.adherence);
-
-  const weightStart = toSafeNumber(first.weight, 0);
-  const weightEnd = toSafeNumber(last.weight, 0);
-
-  const energyStart = toSafeNumber(first.energyLevel, 0);
-  const energyEnd = toSafeNumber(last.energyLevel, 0);
-  const adherenceChange = adherenceEnd - adherenceStart;
-  const energyChange = energyEnd - energyStart;
-  const weightChange = weightEnd - weightStart;
-  const adherenceStartVal = Number(adherenceStart.toFixed(0));
-  const adherenceEndVal = Number(adherenceEnd.toFixed(0));
-
-  const weightStartVal = Number(weightStart.toFixed(1));
-  const weightEndVal = Number(weightEnd.toFixed(1));
-
-  const energyStartVal = Number(energyStart.toFixed(1));
-  const energyEndVal = Number(energyEnd.toFixed(1));
-
-  let reason = "";
-
-  if (recentLogs.length < 2) {
-    reason = "Not enough data to determine trend";
-  } else if (primaryIssue === "Low adherence") {
-    if (adherenceChange < 0) {
-      reason = `Adherence dropped from ${adherenceStartVal}% → ${adherenceEndVal}% over last ${recentLogs.length} logs`;
-    } else {
-      reason = `Adherence improved from ${adherenceStartVal}% → ${adherenceEndVal}% but still below optimal`;
-    }
-  } else if (primaryIssue === "Low energy") {
-    if (energyChange < 0) {
-      reason = `Energy level decreased from ${energyStartVal} → ${energyEndVal} over last ${recentLogs.length} logs`;
-    } else {
-      reason = `Energy level improved from ${energyStartVal} → ${energyEndVal} but remains low`;
-    }
-  } else if (primaryIssue === "No progress") {
-    if (Math.abs(weightChange) < 0.5) {
-      reason = `Weight remained nearly constant (${weightStartVal}kg → ${weightEndVal}kg), indicating lack of progress`;
-    } else {
-      reason = `Weight changed from ${weightStartVal}kg → ${weightEndVal}kg but not aligned with goal`;
-    }
-  } else {
-    const weightDiff = (weightEnd - weightStart).toFixed(1);
-    const adherenceDiff = (adherenceEnd - adherenceStart).toFixed(0);
-    reason = `Weight ${weightChange < 0 ? "decreased" : "increased"} by ${weightDiff}kg and adherence ${adherenceChange < 0 ? "declined" : "improved"} by ${adherenceDiff}% over recent logs`;
-  }
-
-  const analysis = {
-    ...computedAnalysis,
-    reason,
-  };
-
-  if (primaryIssue === "Low adherence") {
-    adjustments.push("Simplify diet plan");
-  }
-
-  if (primaryIssue === "Low energy") {
-    adjustments.push("Increase calorie intake");
-  }
-
-  if (primaryIssue === "No progress") {
-    adjustments.push("Adjust calorie and macro ratio");
-  }
-  activePlan.analysis = {
+  // Keep meal-quality metadata for UI while preserving explainable response shape.
+  const validation = validatePlan(activePlan?.meals || [], activePlan?.doshaType || "");
+  const analysisWithMealQuality = {
     ...analysis,
+    mealQuality: {
+      score: roundScore((validation?.score ?? 0) * 10),
+      validationScore: validation?.score ?? 0,
+      issues: validation?.issues || [],
+      suggestions: validation?.suggestions || [],
+    },
+  };
+
+  activePlan.analysis = {
+    ...analysisWithMealQuality,
     computedAt: new Date(),
   };
-  activePlan.adjustments = adjustments;
-  await activePlan.save();
+  activePlan.adjustments = changes.map((change) => change.reason || change.type);
+
+  if (changes.length > 0) {
+    const latestChangeType = changes[changes.length - 1]?.type || null;
+
+    if (latestChangeType) {
+      activePlan.lastAdjustment = { type: latestChangeType };
+      activePlan.lastAdjustmentType = latestChangeType;
+    }
+  }
+
+  await persistPlanIfDocument(activePlan);
 
   return {
     patientId: String(patient._id),
     planId: String(activePlan._id),
     logCount: normalizedLogs.length,
-    analysis,
-    appliedRule: null,
-    changes: [],
+    analysis: analysisWithMealQuality,
+    lastAdjustment,
+    appliedRule,
+    changes,
   };
 };
 

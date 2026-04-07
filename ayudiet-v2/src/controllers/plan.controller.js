@@ -76,16 +76,101 @@ const validatePlanPayload = ({
   };
 };
 
+const normalizeGoalForFoods = (goal = "") => {
+  const normalizedGoal = String(goal).trim().toLowerCase();
+
+  if (!normalizedGoal) return "general wellness";
+  if (
+    normalizedGoal.includes("diabetes") ||
+    normalizedGoal.includes("blood sugar")
+  ) {
+    return "weight loss";
+  }
+  if (normalizedGoal.includes("pcos")) {
+    return "weight loss";
+  }
+  if (
+    normalizedGoal.includes("hypertension") ||
+    normalizedGoal.includes("high blood pressure") ||
+    normalizedGoal.includes("blood pressure")
+  ) {
+    return "better digestion";
+  }
+  if (normalizedGoal.includes("thyroid")) {
+    return "general wellness";
+  }
+  if (
+    normalizedGoal.includes("weight loss") ||
+    normalizedGoal.includes("fat loss") ||
+    normalizedGoal.includes("slim")
+  ) {
+    return "weight loss";
+  }
+  if (
+    normalizedGoal.includes("muscle gain") ||
+    normalizedGoal.includes("weight gain") ||
+    normalizedGoal.includes("bulk")
+  ) {
+    return "muscle gain";
+  }
+  if (
+    normalizedGoal.includes("digest") ||
+    normalizedGoal.includes("acidity") ||
+    normalizedGoal.includes("bloat") ||
+    normalizedGoal.includes("constipation")
+  ) {
+    return "better digestion";
+  }
+
+  return "general wellness";
+};
+
 const getRelevantFoods = (goal, doshaType) => {
-  const normalizedGoal = goal.trim().toLowerCase();
-  const matches = foods.filter(
+  const canonicalGoal = normalizeGoalForFoods(goal);
+  const doshaMatchedFoods = foods.filter((food) => food.dosha.includes(doshaType));
+
+  const specificGoalFoods = doshaMatchedFoods.filter((food) =>
+    food.goals.includes(canonicalGoal)
+  );
+  const generalWellnessFoods = doshaMatchedFoods.filter(
     (food) =>
-      food.dosha.includes(doshaType) &&
-      (food.goals.includes(normalizedGoal) ||
-        food.goals.includes("general wellness"))
+      food.goals.includes("general wellness") &&
+      !specificGoalFoods.some((selectedFood) => selectedFood.name === food.name)
+  );
+  const remainingDoshaFoods = doshaMatchedFoods.filter(
+    (food) =>
+      !specificGoalFoods.some((selectedFood) => selectedFood.name === food.name) &&
+      !generalWellnessFoods.some((selectedFood) => selectedFood.name === food.name)
   );
 
-  return matches.slice(0, 5);
+  if (canonicalGoal !== "general wellness" && specificGoalFoods.length >= 3) {
+    return specificGoalFoods.slice(0, 5);
+  }
+
+  // Prioritize foods that match the explicit goal, then wellness-safe fillers.
+  return [...specificGoalFoods, ...generalWellnessFoods, ...remainingDoshaFoods].slice(0, 5);
+};
+
+const buildFoodPools = (goal, doshaType, relevantFoods = []) => {
+  const canonicalGoal = normalizeGoalForFoods(goal);
+  const pool = relevantFoods.length ? relevantFoods : getRelevantFoods(goal, doshaType);
+  const goalFoods = pool.filter((food) => food.goals.includes(canonicalGoal));
+
+  return {
+    canonicalGoal,
+    pool,
+    goalFoods,
+  };
+};
+
+const chooseFoodFromPool = (pool, mealType, offset = 0) => {
+  if (!Array.isArray(pool) || pool.length === 0) {
+    return null;
+  }
+
+  const typeMatched = pool.filter((food) => food.mealTypes.includes(mealType));
+  const source = typeMatched.length ? typeMatched : pool;
+  return source[offset % source.length] || null;
 };
 
 const buildFoodGrounding = (relevantFoods) =>
@@ -99,9 +184,16 @@ const buildFoodGrounding = (relevantFoods) =>
 const buildPatientSummary = (patient, goal, doshaType) => ({
   age: patient.age || "Not recorded",
   weight: patient.weight || "Not recorded",
+  height: patient.height || "Not recorded",
+  bloodGroup: patient.bloodGroup || "Not recorded",
   gender: patient.gender || "Not recorded",
   conditions: patient.healthConditions || "None reported",
+  medications: patient.currentMedications || "None reported",
   allergies: patient.allergies || "None reported",
+  dietType: patient.dietType || "Not recorded",
+  activityLevel: patient.activityLevel || "Not recorded",
+  preferences: Array.isArray(patient.preferences) ? patient.preferences.join(", ") : "None reported",
+  planningInputs: patient.planningInputs || {},
   dominantDosha: patient.prakriti?.dominantDosha || patient.dosha || "Not recorded",
   goal,
   doshaType,
@@ -171,7 +263,7 @@ const buildProgressInsights = (progressLogs = [], goal = "") => {
     energyLogs.length > 3 ? energyLogs.slice(0, Math.max(energyLogs.length - 3, 1)) : energyLogs.slice(0, -1);
   const recentEnergyLogs = energyLogs.slice(-3);
   const adherenceLogs = orderedLogs.filter(
-    (log) => typeof log.adherence === "boolean"
+    (log) => typeof log.adherence === "number" || typeof log.adherence === "boolean"
   );
 
   const averageEnergy = average(energyLogs.map((log) => log.energyLevel));
@@ -181,9 +273,10 @@ const buildProgressInsights = (progressLogs = [], goal = "") => {
   const recentAverageEnergy = average(
     recentEnergyLogs.map((log) => log.energyLevel)
   );
-  const adherenceRate = adherenceLogs.length
-    ? adherenceLogs.filter((log) => log.adherence).length / adherenceLogs.length
-    : null;
+  const adherenceValues = adherenceLogs
+    .map((log) => (typeof log.adherence === "boolean" ? (log.adherence ? 100 : 0) : log.adherence))
+    .filter((value) => typeof value === "number" && !Number.isNaN(value));
+  const adherenceRate = adherenceValues.length ? average(adherenceValues) / 100 : null;
 
   const insights = [];
   const adjustments = [];
@@ -247,17 +340,31 @@ const buildPersonalizedPrompt = (
   progressSummary
 ) => {
   const summary = buildPatientSummary(patient, goal, doshaType);
+  const planningInputs = summary.planningInputs || {};
 
   return `
 Generate a 3-day Ayurvedic diet plan for:
 
 Age: ${summary.age}
+Height: ${summary.height} cm
 Weight: ${summary.weight} kg
+Blood group: ${summary.bloodGroup}
 Gender: ${summary.gender}
+Diet type: ${summary.dietType}
+Activity level (1-5): ${summary.activityLevel}
+Preferences: ${summary.preferences}
 Goal: ${summary.goal}
 Dosha: ${summary.doshaType}
+Dominant dosha (profile): ${summary.dominantDosha}
 Conditions: ${summary.conditions}
+Medications: ${summary.medications}
 Allergies: ${summary.allergies}
+Target weight (kg): ${planningInputs.targetWeight ?? "Not recorded"}
+Timeframe (weeks): ${planningInputs.timeframeWeeks ?? "Not recorded"}
+Meal pattern: ${planningInputs.mealPattern || "Not recorded"}
+Sleep (hours/night): ${planningInputs.sleepHours ?? "Not recorded"}
+Stress level (1-5): ${planningInputs.stressLevel ?? "Not recorded"}
+Water intake (liters/day): ${planningInputs.waterIntakeLiters ?? "Not recorded"}
 
 Recent progress insights:
 ${progressSummary.insights.map((insight) => `- ${insight}`).join("\n")}
@@ -274,6 +381,9 @@ Rules:
 - Avoid repetition across days
 - Follow dosha-specific restrictions strictly
 - Keep the plan Ayurvedic compliant
+- Use lighter dinner if stress is high or digestion is weak
+- Prefer easier-to-prepare meals if adherence is low
+- Keep hydration-supportive meals if water intake is low
 - Do NOT introduce foods outside the provided list
 - Return exactly 3 days
 
@@ -293,9 +403,19 @@ const getPersonalizationSeed = (patient, goal, doshaType) =>
   [
     patient.age || "",
     patient.weight || "",
+    patient.height || "",
+    patient.bloodGroup || "",
     patient.gender || "",
     patient.healthConditions || "",
     patient.allergies || "",
+    patient.dietType || "",
+    patient.activityLevel || "",
+    patient.planningInputs?.targetWeight || "",
+    patient.planningInputs?.timeframeWeeks || "",
+    patient.planningInputs?.mealPattern || "",
+    patient.planningInputs?.sleepHours || "",
+    patient.planningInputs?.stressLevel || "",
+    patient.planningInputs?.waterIntakeLiters || "",
     goal || "",
     doshaType || "",
   ]
@@ -304,57 +424,445 @@ const getPersonalizationSeed = (patient, goal, doshaType) =>
     .reduce((total, character) => total + character.charCodeAt(0), 0);
 
 const createMockMeals = (patient, goal, doshaType, relevantFoods) => {
-  const picks = relevantFoods.length ? relevantFoods : getRelevantFoods(goal, doshaType);
+  const { canonicalGoal, pool, goalFoods } = buildFoodPools(goal, doshaType, relevantFoods);
+  const picks = pool;
   const personalizationSeed = getPersonalizationSeed(patient, goal, doshaType);
-  const choose = (index, mealType) => {
+  const choose = (index, mealType, preferGoalFoods = false) => {
     const offset = (personalizationSeed + index) % Math.max(picks.length, 1);
-    return (
-      picks.find(
-        (food) =>
-          food.mealTypes.includes(mealType) &&
-          food.name !== picks[offset % picks.length]?.name
-      ) || picks[offset % picks.length]
-    );
+    const basePool =
+      preferGoalFoods && goalFoods.length ? goalFoods : picks;
+    return chooseFoodFromPool(basePool, mealType, offset);
   };
 
   return [0, 1, 2].map((index) => ({
     day: `Day ${index + 1}`,
-    breakfast: choose(index, "breakfast")?.name || "stewed fruit",
-    lunch: choose(index + 1, "lunch")?.name || "moong dal khichdi",
-    dinner: choose(index + 2, "dinner")?.name || "moong soup",
+    breakfast:
+      choose(index, "breakfast", canonicalGoal !== "general wellness")?.name ||
+      "stewed fruit",
+    lunch:
+      choose(index + 1, "lunch", true)?.name ||
+      "moong dal khichdi",
+    dinner:
+      choose(index + 2, "dinner", true)?.name ||
+      "moong soup",
   }));
 };
 
-const parseAiMeals = (content) => {
-  try {
-    const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-    const normalizedMeals = normalizeMeals(parsed);
+const mealContainsFood = (mealText = "", foodName = "") =>
+  String(mealText).toLowerCase().includes(String(foodName).toLowerCase());
 
-    if (
-      !Array.isArray(parsed) ||
-      normalizedMeals.length === 0 ||
-      normalizedMeals.some((mealDay) => !hasAtLeastOneMeal(mealDay))
-    ) {
-      return null;
-    }
+const enforceGoalSpecificMeals = (meals, goal, doshaType, relevantFoods, patient) => {
+  const normalizedMeals = normalizeMeals(meals);
+  const { canonicalGoal, goalFoods } = buildFoodPools(goal, doshaType, relevantFoods);
 
+  if (
+    canonicalGoal === "general wellness" ||
+    !goalFoods.length ||
+    !normalizedMeals.length
+  ) {
     return normalizedMeals;
+  }
+
+  const personalizationSeed = getPersonalizationSeed(patient, goal, doshaType);
+
+  return normalizedMeals.map((mealDay, index) => {
+    const breakfastFood = chooseFoodFromPool(
+      goalFoods,
+      "breakfast",
+      personalizationSeed + index
+    );
+    const lunchFood = chooseFoodFromPool(
+      goalFoods,
+      "lunch",
+      personalizationSeed + index + 1
+    );
+    const dinnerFood = chooseFoodFromPool(
+      goalFoods,
+      "dinner",
+      personalizationSeed + index + 2
+    );
+
+    return {
+      ...mealDay,
+      breakfast:
+        mealContainsFood(mealDay.breakfast, breakfastFood?.name) || !breakfastFood
+          ? mealDay.breakfast
+          : breakfastFood.name,
+      lunch:
+        mealContainsFood(mealDay.lunch, lunchFood?.name) || !lunchFood
+          ? mealDay.lunch
+          : lunchFood.name,
+      dinner:
+        mealContainsFood(mealDay.dinner, dinnerFood?.name) || !dinnerFood
+          ? mealDay.dinner
+          : dinnerFood.name,
+    };
+  });
+};
+
+const getMealsCandidateFromParsed = (parsed) => {
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  const candidates = [
+    parsed.meals,
+    parsed.days,
+    parsed.plan,
+    parsed.dietPlan,
+    parsed.diet_plan,
+    parsed.data?.meals,
+    parsed.result?.meals,
+  ];
+
+  return candidates.find((candidate) => Array.isArray(candidate)) || null;
+};
+
+const tryParseJson = (value = "") => {
+  try {
+    return JSON.parse(String(value || "").trim());
   } catch {
     return null;
   }
 };
 
+const extractBalancedJsonSegments = (text = "") => {
+  const source = String(text || "");
+  const segments = [];
+  const openings = new Set(["{", "["]);
+  const closings = {
+    "{": "}",
+    "[": "]",
+  };
+
+  for (let i = 0; i < source.length; i += 1) {
+    const first = source[i];
+    if (!openings.has(first)) continue;
+
+    const stack = [first];
+    let inString = false;
+    let escaped = false;
+
+    for (let j = i + 1; j < source.length; j += 1) {
+      const char = source[j];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+
+      if (openings.has(char)) {
+        stack.push(char);
+        continue;
+      }
+
+      const current = stack[stack.length - 1];
+      if (char === closings[current]) {
+        stack.pop();
+        if (stack.length === 0) {
+          segments.push(source.slice(i, j + 1));
+          i = j;
+          break;
+        }
+      }
+    }
+  }
+
+  return segments;
+};
+
+const parseMealsFromTextBlocks = (content = "") => {
+  const text = String(content || "");
+  if (!text.trim()) return null;
+
+  const dayPattern = /day\s*(\d+)\s*[:\-]?\s*([\s\S]*?)(?=day\s*\d+\s*[:\-]?|$)/gi;
+  const meals = [];
+  let dayMatch;
+
+  while ((dayMatch = dayPattern.exec(text)) !== null) {
+    const dayNumber = Number(dayMatch[1]);
+    const chunk = dayMatch[2] || "";
+    const breakfastMatch = chunk.match(/breakfast\s*[:\-]\s*([^\n\r]+)/i);
+    const lunchMatch = chunk.match(/lunch\s*[:\-]\s*([^\n\r]+)/i);
+    const dinnerMatch = chunk.match(/dinner\s*[:\-]\s*([^\n\r]+)/i);
+
+    meals.push({
+      day: Number.isFinite(dayNumber) ? `Day ${dayNumber}` : "Day 1",
+      breakfast: (breakfastMatch?.[1] || "").trim(),
+      lunch: (lunchMatch?.[1] || "").trim(),
+      dinner: (dinnerMatch?.[1] || "").trim(),
+    });
+  }
+
+  const normalizedMeals = normalizeMeals(meals);
+  if (
+    normalizedMeals.length > 0 &&
+    normalizedMeals.every((mealDay) => hasAtLeastOneMeal(mealDay))
+  ) {
+    return normalizedMeals;
+  }
+
+  return null;
+};
+
+const parseAiMeals = (content) => {
+  const cleaned = String(content || "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const parsedCandidates = [
+    tryParseJson(cleaned),
+    ...extractBalancedJsonSegments(cleaned).map((segment) => tryParseJson(segment)),
+  ].filter(Boolean);
+
+  for (const parsed of parsedCandidates) {
+    const mealsCandidate = getMealsCandidateFromParsed(parsed);
+    const normalizedMeals = normalizeMeals(mealsCandidate || []);
+
+    if (
+      Array.isArray(mealsCandidate) &&
+      normalizedMeals.length > 0 &&
+      normalizedMeals.every((mealDay) => hasAtLeastOneMeal(mealDay))
+    ) {
+      return normalizedMeals;
+    }
+  }
+
+  return parseMealsFromTextBlocks(cleaned);
+};
+
+const sanitizeReasonToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+
+const ensureChatCompletionsEndpoint = (baseUrl = "") => {
+  const trimmed = String(baseUrl || "").trim().replace(/\/+$/g, "");
+  if (!trimmed) return "";
+  if (/\/chat\/completions$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}/chat/completions`;
+};
+
+const inferOpenAiCompatibleProvider = (baseUrl = "") => {
+  const normalized = String(baseUrl || "").toLowerCase();
+  if (normalized.includes("groq")) return "groq";
+  if (normalized.includes("openrouter")) return "openrouter";
+  if (normalized.includes("openai")) return "openai";
+  return "openai_compatible";
+};
+
+const requestMealsFromOpenAiCompatible = async ({
+  endpoint,
+  apiKey,
+  model,
+  prompt,
+  provider,
+  timeoutMs = 20000,
+  useJsonResponseFormat = false,
+}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const body = {
+      model,
+      temperature: 0.4,
+      ...(useJsonResponseFormat ? { response_format: { type: "json_object" } } : {}),
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an Ayurvedic diet planner. Return valid JSON only, keep formatting consistent, and use only the supplied foods while tailoring the meals to the patient profile.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    };
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      const providerErrorCode = sanitizeReasonToken(
+        errorData?.error?.code || errorData?.error?.type || ""
+      );
+      return {
+        meals: null,
+        errorReason: `${provider}_http_${response.status}${
+          providerErrorCode ? `_${providerErrorCode}` : ""
+        }`,
+      };
+    }
+
+    const data = await response.json().catch(() => null);
+    const content = data?.choices?.[0]?.message?.content || "";
+    const parsedMeals = parseAiMeals(content);
+
+    if (!parsedMeals) {
+      return {
+        meals: null,
+        errorReason: `${provider}_parse_failed`,
+      };
+    }
+
+    return {
+      meals: parsedMeals,
+      errorReason: null,
+    };
+  } catch (error) {
+    return {
+      meals: null,
+      errorReason:
+        error?.name === "AbortError"
+          ? `${provider}_timeout`
+          : `${provider}_request_failed`,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const requestChatFromOpenAiCompatible = async ({
+  endpoint,
+  apiKey,
+  model,
+  message,
+  timeoutMs = 20000,
+  sessionId = "",
+}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are AyuDiet clinical assistant. Reply briefly, clearly, and practically for doctor workflows on nutrition follow-up, adherence, digestion, and plan adjustments.",
+          },
+          {
+            role: "user",
+            content: String(message || "").trim(),
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      const providerErrorCode = sanitizeReasonToken(
+        errorData?.error?.code || errorData?.error?.type || ""
+      );
+      return {
+        reply: "",
+        session_id: sessionId || null,
+        errorReason: `chat_http_${response.status}${
+          providerErrorCode ? `_${providerErrorCode}` : ""
+        }`,
+      };
+    }
+
+    const data = await response.json().catch(() => null);
+    const reply = String(data?.choices?.[0]?.message?.content || "").trim();
+
+    if (!reply) {
+      return {
+        reply: "",
+        session_id: sessionId || null,
+        errorReason: "chat_empty_reply",
+      };
+    }
+
+    return {
+      reply,
+      session_id: sessionId || null,
+      errorReason: null,
+    };
+  } catch (error) {
+    return {
+      reply: "",
+      session_id: sessionId || null,
+      errorReason:
+        error?.name === "AbortError" ? "chat_timeout" : "chat_request_failed",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 const generateMealsWithAi = async (patient, goal, doshaType, progressSummary) => {
   const relevantFoods = getRelevantFoods(goal, doshaType);
-  const apiKey = process.env.OPENAI_API_KEY;
+  const model = MEALS_LLM_MODEL;
+  const endpoint = ensureChatCompletionsEndpoint(MEALS_LLM_BASE_URL);
+  const provider = inferOpenAiCompatibleProvider(endpoint);
+  const apiKey = MEALS_LLM_API_KEY;
 
   if (!relevantFoods.length) {
-    return createMockMeals(patient, goal, doshaType, []);
+    return {
+      meals: createMockMeals(patient, goal, doshaType, []),
+      generationSource: "fallback_mock",
+      generationFallbackReason: "no_relevant_foods",
+      generationModel: null,
+    };
+  }
+
+  if (!endpoint) {
+    return {
+      meals: createMockMeals(patient, goal, doshaType, relevantFoods),
+      generationSource: "fallback_mock",
+      generationFallbackReason: "missing_meals_llm_base_url",
+      generationModel: null,
+    };
   }
 
   if (!apiKey) {
-    return createMockMeals(patient, goal, doshaType, relevantFoods);
+    return {
+      meals: createMockMeals(patient, goal, doshaType, relevantFoods),
+      generationSource: "fallback_mock",
+      generationFallbackReason: "missing_meals_llm_api_key",
+      generationModel: null,
+    };
   }
 
   const prompt = buildPersonalizedPrompt(
@@ -365,40 +873,37 @@ const generateMealsWithAi = async (patient, goal, doshaType, progressSummary) =>
     progressSummary
   );
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an Ayurvedic diet planner. Return valid JSON only, keep formatting consistent, and use only the supplied foods while tailoring the meals to the patient profile.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
-    });
+  const llmResult = await requestMealsFromOpenAiCompatible({
+    provider,
+    endpoint,
+    apiKey,
+    model,
+    prompt,
+    timeoutMs: MEALS_LLM_TIMEOUT_MS,
+    useJsonResponseFormat: false,
+  });
 
-    if (!response.ok) {
-      return createMockMeals(patient, goal, doshaType, relevantFoods);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    return parseAiMeals(content) || createMockMeals(patient, goal, doshaType, relevantFoods);
-  } catch {
-    return createMockMeals(patient, goal, doshaType, relevantFoods);
+  if (llmResult.meals) {
+    return {
+      meals: enforceGoalSpecificMeals(
+        llmResult.meals,
+        goal,
+        doshaType,
+        relevantFoods,
+        patient
+      ),
+      generationSource: provider,
+      generationFallbackReason: null,
+      generationModel: model,
+    };
   }
+
+  return {
+    meals: createMockMeals(patient, goal, doshaType, relevantFoods),
+    generationSource: "fallback_mock",
+    generationFallbackReason: llmResult.errorReason || `${provider}_failed`,
+    generationModel: model,
+  };
 };
 
 const buildAiResponse = (
@@ -407,7 +912,8 @@ const buildAiResponse = (
   goal,
   doshaType,
   relevantFoods,
-  progressSummary
+  progressSummary,
+  generationMetadata = {}
 ) => ({
   success: true,
   foods: relevantFoods,
@@ -415,56 +921,311 @@ const buildAiResponse = (
   validation: validatePlan(meals, doshaType),
   patientContext: buildPatientSummary(patient, goal, doshaType),
   progressInsights: progressSummary.insights,
+  generationSource: generationMetadata.generationSource || "unknown",
+  generationFallbackReason: generationMetadata.generationFallbackReason || null,
+  generationModel: generationMetadata.generationModel || null,
 });
 
-const STRICT_LLM_BASE_URL =
-  process.env.STRICT_LLM_BASE_URL ||
-  process.env.LLM_BACKEND_URL ||
-  "https://ayudiet-llm-model.onrender.com";
+const parseStrictBaseUrls = () => {
+  const fromList = String(process.env.STRICT_LLM_BASE_URLS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const fromSingle = [
+    process.env.STRICT_LLM_BASE_URL,
+    process.env.LLM_BACKEND_URL,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  // Prefer local endpoints during development, then hosted fallback.
+  const defaults = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://ayudiet-llm-model.onrender.com",
+  ];
+
+  return [...new Set([...fromList, ...fromSingle, ...defaults])];
+};
+
+const STRICT_LLM_BASE_URLS = parseStrictBaseUrls();
 
 const STRICT_LLM_TIMEOUT_MS = Number(process.env.STRICT_LLM_TIMEOUT_MS || 25000);
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 20000);
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || "gemini-2.0-flash").trim();
+const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
+const GROQ_TIMEOUT_MS = Number(process.env.GROQ_TIMEOUT_MS || 20000);
+const GROQ_MODEL = String(process.env.GROQ_MODEL || "llama-3.1-8b-instant").trim();
+const GROQ_API_KEY = String(process.env.GROQ_API_KEY || "").trim();
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const MEALS_LLM_MODEL = String(
+  process.env.MEALS_LLM_MODEL || GROQ_MODEL || OPENAI_MODEL || "llama-3.1-8b-instant"
+).trim();
+const MEALS_LLM_API_KEY = String(
+  process.env.MEALS_LLM_API_KEY || GROQ_API_KEY || OPENAI_API_KEY || ""
+).trim();
+const MEALS_LLM_BASE_URL = String(
+  process.env.MEALS_LLM_BASE_URL || process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"
+).trim();
+const MEALS_LLM_TIMEOUT_MS = Number(
+  process.env.MEALS_LLM_TIMEOUT_MS || process.env.GROQ_TIMEOUT_MS || 20000
+);
+const PROFILE_ALLOWED_RISK_FLAGS = new Set([
+  "none",
+  "diabetes",
+  "high_blood_pressure",
+  "obesity",
+  "thyroid",
+  "pcos",
+  "high_cholesterol",
+  "digestive_issues",
+]);
 
-const callStrictLlmEndpoint = async (path, payload = {}) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), STRICT_LLM_TIMEOUT_MS);
-  const llmApiKey = process.env.AYUDIET_LLM_API_KEY || process.env.AYUDIET_API_KEY;
+const normalizeProfileRiskFlags = (flags) => {
+  if (!Array.isArray(flags)) {
+    return ["none"];
+  }
+
+  const cleaned = flags
+    .map((flag) => String(flag || "").trim().toLowerCase())
+    .filter(Boolean)
+    .filter((flag) => PROFILE_ALLOWED_RISK_FLAGS.has(flag));
+
+  return cleaned.length ? [...new Set(cleaned)] : ["none"];
+};
+
+const normalizeProfileDosha = (value, fallback = "pitta") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "vata" || normalized === "pitta" || normalized === "kapha") {
+    return normalized;
+  }
+  return fallback;
+};
+
+const normalizeProfileConfidence = (value, fallback = 0.2) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(1, parsed));
+};
+
+const extractJsonObject = (text = "") => {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
 
   try {
-    const response = await fetch(`${STRICT_LLM_BASE_URL}${path}`, {
+    return JSON.parse(raw);
+  } catch {
+    // Continue trying common wrappers.
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {
+      // Continue to bracket matching fallback.
+    }
+  }
+
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+const generateProfileWithGemini = async ({ symptoms, preferredDosha }) => {
+  if (!GEMINI_API_KEY) {
+    return null;
+  }
+
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: [
+              "Return ONLY valid JSON (no markdown) with keys:",
+              "risk_flags (array), primary_dosha (vata|pitta|kapha), confidence (0..1), fallback (boolean).",
+              "Allowed risk_flags: none, diabetes, high_blood_pressure, obesity, thyroid, pcos, high_cholesterol, digestive_issues.",
+              `Symptoms: ${String(symptoms || "").trim()}`,
+              `Preferred dosha: ${String(preferredDosha || "").trim() || "pitta"}`,
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 256,
+      responseMimeType: "application/json",
+    },
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const normalizedModelName = GEMINI_MODEL.replace(/^models\//i, "");
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      normalizedModelName
+    )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(llmApiKey ? { "X-API-Key": llmApiKey } : {}),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
-    const data = await response.json().catch(() => null);
-
     if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        data?.error?.message ||
-          data?.error ||
-          `Strict backend failed with status ${response.status}`
-      );
+      return null;
     }
 
-    return data;
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new ApiError(504, "Strict backend timeout");
+    const data = await response.json().catch(() => null);
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const text = Array.isArray(parts)
+      ? parts.map((part) => String(part?.text || "")).join("\n").trim()
+      : "";
+    const parsed = extractJsonObject(text);
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
     }
 
-    if (error instanceof ApiError) {
-      throw error;
-    }
-
-    throw new ApiError(502, "Strict backend unavailable");
+    return {
+      risk_flags: normalizeProfileRiskFlags(parsed.risk_flags),
+      primary_dosha: normalizeProfileDosha(parsed.primary_dosha, preferredDosha || "pitta"),
+      confidence: normalizeProfileConfidence(parsed.confidence, 0.65),
+      fallback: false,
+      fallback_reason: null,
+      source: "gemini",
+    };
+  } catch {
+    return null;
   } finally {
     clearTimeout(timeoutId);
   }
+};
+
+const generateProfileWithGroq = async ({ symptoms, preferredDosha }) => {
+  if (!GROQ_API_KEY) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Return ONLY valid JSON with keys risk_flags (array), primary_dosha (vata|pitta|kapha), confidence (0..1), fallback (boolean). Allowed risk_flags: none, diabetes, high_blood_pressure, obesity, thyroid, pcos, high_cholesterol, digestive_issues.",
+          },
+          {
+            role: "user",
+            content: `Symptoms: ${String(symptoms || "").trim()}\nPreferred dosha: ${
+              String(preferredDosha || "").trim() || "pitta"
+            }`,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json().catch(() => null);
+    const text = String(data?.choices?.[0]?.message?.content || "").trim();
+    const parsed = extractJsonObject(text);
+
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return {
+      risk_flags: normalizeProfileRiskFlags(parsed.risk_flags),
+      primary_dosha: normalizeProfileDosha(parsed.primary_dosha, preferredDosha || "pitta"),
+      confidence: normalizeProfileConfidence(parsed.confidence, 0.65),
+      fallback: false,
+      fallback_reason: null,
+      source: "groq",
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const callStrictLlmEndpoint = async (path, payload = {}) => {
+  const llmApiKey = process.env.AYUDIET_LLM_API_KEY || process.env.AYUDIET_API_KEY;
+  let lastError = null;
+
+  for (const baseUrl of STRICT_LLM_BASE_URLS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), STRICT_LLM_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(llmApiKey ? { "X-API-Key": llmApiKey } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new ApiError(
+          response.status,
+          data?.error?.message ||
+            data?.error ||
+            `Strict backend failed with status ${response.status}`
+        );
+      }
+
+      return data;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        lastError = new ApiError(504, `Strict backend timeout: ${baseUrl}`);
+      } else if (error instanceof ApiError) {
+        lastError = error;
+      } else {
+        lastError = new ApiError(502, `Strict backend unavailable: ${baseUrl}`);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw lastError || new ApiError(502, "Strict backend unavailable");
 };
 
 const ensureAnalysisInResponse = (plan) => {
@@ -633,6 +1394,30 @@ const getPendingPlans = async (req, res, next) => {
   }
 };
 
+const getActivePlans = async (req, res, next) => {
+  try {
+    const plans = await Plan.find({
+      doctor: req.user.id,
+      isActive: true,
+    })
+      .populate("patient", "name age gender phone")
+      .sort({ createdAt: -1 });
+
+    const plansWithAnalysis = (await attachAnalysisToPlans(plans)).map(
+      ensureAnalysisInResponse
+    );
+    plansWithAnalysis.forEach(logOutgoingPlan);
+
+    res.status(200).json({
+      success: true,
+      count: plansWithAnalysis.length,
+      plans: plansWithAnalysis,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const generateAiPlan = async (req, res, next) => {
   try {
     const { patientId, goal, doshaType } = req.body;
@@ -660,12 +1445,13 @@ const generateAiPlan = async (req, res, next) => {
     const relevantFoods = getRelevantFoods(normalizedGoal, doshaType);
     const progressLogs = await getRecentProgressLogs(patientId, req.user.id, patient);
     const progressSummary = buildProgressInsights(progressLogs, normalizedGoal);
-    const meals = await generateMealsWithAi(
+    const generationResult = await generateMealsWithAi(
       patient,
       normalizedGoal,
       doshaType,
       progressSummary
     );
+    const meals = generationResult.meals;
 
     res
       .status(200)
@@ -676,7 +1462,8 @@ const generateAiPlan = async (req, res, next) => {
           normalizedGoal,
           doshaType,
           relevantFoods,
-          progressSummary
+          progressSummary,
+          generationResult
         )
       );
   } catch (error) {
@@ -714,12 +1501,13 @@ const generateAiDay = async (req, res, next) => {
     const relevantFoods = getRelevantFoods(normalizedGoal, doshaType);
     const progressLogs = await getRecentProgressLogs(patientId, req.user.id, patient);
     const progressSummary = buildProgressInsights(progressLogs, normalizedGoal);
-    const meals = await generateMealsWithAi(
+    const generationResult = await generateMealsWithAi(
       patient,
       normalizedGoal,
       doshaType,
       progressSummary
     );
+    const meals = generationResult.meals;
     const dayIndex = Number(dayNumber) - 1;
     const fallbackDay = {
       day: `Day ${dayNumber}`,
@@ -749,6 +1537,9 @@ const generateAiDay = async (req, res, next) => {
         ],
         doshaType
       ),
+      generationSource: generationResult.generationSource || "unknown",
+      generationFallbackReason: generationResult.generationFallbackReason || null,
+      generationModel: generationResult.generationModel || null,
     });
   } catch (error) {
     next(error);
@@ -788,12 +1579,98 @@ const fixAiPlan = async (req, res, next) => {
 
 const strictProfileProxy = async (req, res, next) => {
   try {
+    // Strict LLM /profile accepts only { symptoms }.
     const payload = {
-      symptoms: req.body?.symptoms || "",
+      symptoms: String(req.body?.symptoms || "").trim(),
     };
+
+    if (!payload.symptoms) {
+      return next(new ApiError(400, "symptoms is required"));
+    }
+
     const data = await callStrictLlmEndpoint("/profile", payload);
-    res.status(200).json(data);
+
+    const normalizedData = data?.data || data || {};
+    const riskFlags = Array.isArray(normalizedData?.risk_flags)
+      ? normalizedData.risk_flags
+      : Array.isArray(normalizedData?.symptom_tags)
+        ? normalizedData.symptom_tags
+        : ["none"];
+
+    const normalized = {
+      success: true,
+      data: {
+        risk_flags: riskFlags,
+        primary_dosha:
+          normalizedData?.primary_dosha ||
+          normalizedData?.dosha ||
+          req.body?.preferredDosha ||
+          "pitta",
+        confidence:
+          typeof normalizedData?.confidence === "number"
+            ? normalizedData.confidence
+            : 0.2,
+        fallback: Boolean(normalizedData?.fallback),
+        fallback_reason: normalizedData?.fallback_reason || null,
+      },
+      error: null,
+    };
+
+    if (normalized.data.fallback) {
+      const groqProfile = await generateProfileWithGroq({
+        symptoms: payload.symptoms,
+        preferredDosha: req.body?.preferredDosha || "pitta",
+      });
+      if (groqProfile) {
+        return res.status(200).json({
+          success: true,
+          data: groqProfile,
+          error: null,
+        });
+      }
+
+      const geminiProfile = await generateProfileWithGemini({
+        symptoms: payload.symptoms,
+        preferredDosha: req.body?.preferredDosha || "pitta",
+      });
+      if (geminiProfile) {
+        return res.status(200).json({
+          success: true,
+          data: geminiProfile,
+          error: null,
+        });
+      }
+    }
+
+    res.status(200).json(normalized);
   } catch (error) {
+    const symptoms = String(req.body?.symptoms || "").trim();
+    if (symptoms) {
+      const groqProfile = await generateProfileWithGroq({
+        symptoms,
+        preferredDosha: req.body?.preferredDosha || "pitta",
+      });
+      if (groqProfile) {
+        return res.status(200).json({
+          success: true,
+          data: groqProfile,
+          error: null,
+        });
+      }
+
+      const geminiProfile = await generateProfileWithGemini({
+        symptoms,
+        preferredDosha: req.body?.preferredDosha || "pitta",
+      });
+      if (geminiProfile) {
+        return res.status(200).json({
+          success: true,
+          data: geminiProfile,
+          error: null,
+        });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -814,11 +1691,56 @@ const strictProfileProxy = async (req, res, next) => {
 
 const strictExplainProxy = async (req, res, next) => {
   try {
+    const contextParts = [
+      req.body?.context,
+      req.body?.symptoms,
+      req.body?.goal,
+      req.body?.patientContext?.healthConditions,
+      req.body?.progressContext?.latest?.digestion,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    const reasoningParts = [
+      req.body?.reasoning,
+      req.body?.progressContext?.latest?.notes,
+      req.body?.progressContext?.latest?.digestionDetail,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    // Strict LLM /explain accepts only { context, reasoning }.
     const payload = {
-      symptoms: req.body?.symptoms || "",
+      context:
+        contextParts.join(". ").trim() || "insufficient context for explanation",
+      reasoning:
+        reasoningParts.join(". ").trim() || "user requested plan explanation",
     };
+
     const data = await callStrictLlmEndpoint("/explain", payload);
-    res.status(200).json(data);
+
+    const normalizedData = data?.data || data || {};
+    const normalized = {
+      success: true,
+      data: {
+        explanation:
+          normalizedData?.explanation ||
+          "insufficient context to provide safe explanation",
+        reasoning: Array.isArray(normalizedData?.reasoning)
+          ? normalizedData.reasoning
+          : ["fallback"],
+        confidence:
+          typeof normalizedData?.confidence === "number"
+            ? normalizedData.confidence
+            : 0.1,
+        sources: Array.isArray(normalizedData?.sources) ? normalizedData.sources : [],
+        fallback: Boolean(normalizedData?.fallback),
+        fallback_reason: normalizedData?.fallback_reason || null,
+      },
+      error: null,
+    };
+
+    res.status(200).json(normalized);
   } catch (error) {
     return res.status(200).json({
       success: true,
@@ -827,6 +1749,105 @@ const strictExplainProxy = async (req, res, next) => {
         reasoning: ["fallback"],
         confidence: 0.1,
         sources: [],
+        fallback: true,
+      },
+      error: null,
+    });
+  }
+};
+
+const strictChatProxy = async (req, res, next) => {
+  try {
+    const message = String(req.body?.message || "").trim();
+    const sessionId = String(req.body?.session_id || req.body?.sessionId || "").trim();
+
+    if (!message) {
+      return next(new ApiError(400, "message is required"));
+    }
+
+    const payload = {
+      message,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    };
+
+    let normalized;
+
+    try {
+      const data = await callStrictLlmEndpoint("/chat", payload);
+      normalized =
+        data && typeof data === "object" && "data" in data
+          ? data
+          : {
+              success: true,
+              data: {
+                reply: data?.response || data?.reply || "",
+                session_id: data?.session_id || sessionId || null,
+                status: data?.status || "success",
+              },
+              error: null,
+            };
+    } catch {
+      const chatEndpoint = ensureChatCompletionsEndpoint(MEALS_LLM_BASE_URL);
+      const directChatResult =
+        chatEndpoint && MEALS_LLM_API_KEY
+          ? await requestChatFromOpenAiCompatible({
+              endpoint: chatEndpoint,
+              apiKey: MEALS_LLM_API_KEY,
+              model: MEALS_LLM_MODEL,
+              message,
+              sessionId,
+              timeoutMs: MEALS_LLM_TIMEOUT_MS,
+            })
+          : { reply: "", session_id: sessionId || null, errorReason: "chat_missing_llm_config" };
+
+      if (String(directChatResult.reply || "").trim()) {
+        normalized = {
+          success: true,
+          data: {
+            reply: directChatResult.reply,
+            session_id: directChatResult.session_id || sessionId || null,
+            status: "success",
+            source: "meals_llm_chat_fallback",
+            fallback: false,
+          },
+          error: null,
+        };
+      } else {
+        // Fallback for strict backends that expose /explain but not /chat.
+        const explainData = await callStrictLlmEndpoint("/explain", {
+          symptoms: message,
+          preferredDosha: "",
+          goal: "chat_assistant",
+          patientContext: {},
+          progressContext: {},
+          constraints: {},
+        });
+
+        normalized = {
+          success: true,
+          data: {
+            reply:
+              explainData?.data?.explanation ||
+              explainData?.explanation ||
+              "I understand your query. Please share a little more context and I will help step by step.",
+            session_id: sessionId || null,
+            status: "success",
+            source: "strict_explain_fallback",
+          },
+          error: null,
+        };
+      }
+    }
+
+    res.status(200).json(normalized);
+  } catch (error) {
+    return res.status(200).json({
+      success: true,
+      data: {
+        reply:
+          "I could not reach the live assistant right now. Please share patient goal, symptoms, and latest adherence/energy/digestion values, and I will guide next steps.",
+        session_id: req.body?.session_id || req.body?.sessionId || null,
+        status: "fallback",
         fallback: true,
       },
       error: null,
@@ -1112,11 +2133,13 @@ module.exports = {
   attachAnalysisToPlan,
   computeAndPersistPlanAnalysis,
   getPendingPlans,
+  getActivePlans,
   generateAiPlan,
   generateAiDay,
   fixAiPlan,
   strictProfileProxy,
   strictExplainProxy,
+  strictChatProxy,
   approvePlan,
   createPlan,
   updatePlan,
