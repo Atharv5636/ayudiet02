@@ -10,6 +10,7 @@ import {
   updatePatient,
   uploadPatientDocument,
 } from "../../services/patient.service";
+import { resolveApiAssetUrl } from "../../utils/apiBaseUrl";
 
 function formatDateForInput(value) {
   if (!value) {
@@ -181,11 +182,7 @@ function EditPatient() {
 
   const resolvePhotoUrl = (photoData) => {
     const raw = String(photoData?.url || "").trim();
-    if (!raw) return "";
-    if (/^https?:\/\//i.test(raw)) return raw;
-    const base = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/g, "");
-    if (!base) return raw;
-    return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+    return resolveApiAssetUrl(raw);
   };
 
   async function handleUploadPhoto() {

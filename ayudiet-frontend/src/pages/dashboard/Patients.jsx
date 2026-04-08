@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
 import BackNavLink from "../../components/common/BackNavLink";
+import { resolveApiAssetUrl } from "../../utils/apiBaseUrl";
 
 function Patients() {
   const navigate = useNavigate();
@@ -46,11 +47,7 @@ function Patients() {
 
   const resolvePhotoUrl = (patient) => {
     const raw = String(patient?.photo?.url || "").trim();
-    if (!raw) return "";
-    if (/^https?:\/\//i.test(raw)) return raw;
-    const base = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/g, "");
-    if (!base) return raw;
-    return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+    return resolveApiAssetUrl(raw);
   };
 
   return (

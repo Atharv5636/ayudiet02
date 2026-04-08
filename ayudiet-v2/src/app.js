@@ -14,6 +14,15 @@ const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 
 const debugLogsEnabled = process.env.DEBUG_LOGS === "true";
+const allowLocalhostOrigins = String(process.env.ALLOW_LOCALHOST_ORIGINS || "true") === "true";
+const allowedLocalPorts = String(process.env.LOCAL_ORIGIN_PORTS || "5173,5174")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const allowedLocalOrigins = allowedLocalPorts.flatMap((port) => [
+  `http://localhost:${port}`,
+  `http://127.0.0.1:${port}`,
+]);
 const normalizeOrigin = (value) => {
   if (!value || typeof value !== "string") return "";
 
@@ -30,9 +39,12 @@ const normalizeOrigin = (value) => {
 const allowedOrigins = [
   ...(process.env.CORS_ORIGIN || "").split(","),
   ...(process.env.FRONTEND_ORIGIN || "").split(","),
+  ...(allowLocalhostOrigins ? allowedLocalOrigins : []),
 ]
   .map(normalizeOrigin)
   .filter(Boolean);
+
+const uniqueAllowedOrigins = [...new Set(allowedOrigins)];
 
 const corsOptions = {
   origin(origin, callback) {
@@ -43,12 +55,12 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(requestOrigin)) {
+    if (uniqueAllowedOrigins.includes(requestOrigin)) {
       return callback(null, true);
     }
 
     // In local/dev we allow unknown origins to avoid blocking local tools.
-    if (!isProduction && allowedOrigins.length === 0) {
+    if (!isProduction && uniqueAllowedOrigins.length === 0) {
       return callback(null, true);
     }
 
@@ -65,6 +77,12 @@ const corsOptions = {
 app.set("trust proxy", 1);
 app.use(express.json());
 app.use(cors(corsOptions));
+
+console.log(
+  `[CORS] allowed origins: ${
+    uniqueAllowedOrigins.length > 0 ? uniqueAllowedOrigins.join(", ") : "(none configured)"
+  }`
+);
 
 if (debugLogsEnabled) {
   app.use((req, res, next) => {

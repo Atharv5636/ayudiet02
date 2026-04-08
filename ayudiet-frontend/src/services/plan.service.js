@@ -1,6 +1,7 @@
 import api from "../utils/api";
+import { getApiBaseUrl } from "../utils/apiBaseUrl";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL = getApiBaseUrl();
 const PLANS_BASE_PATH = "/plans";
 const STRICT_BACKEND_BASE_URLS = [
   `${API_BASE_URL}/plans/strict`,

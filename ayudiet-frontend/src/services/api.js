@@ -1,6 +1,7 @@
 import api from "../utils/api";
+import { getApiBaseUrl } from "../utils/apiBaseUrl";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL;
+export const API_BASE_URL = getApiBaseUrl();
 
 const normalizeRequestData = (body, headers = {}) => {
   if (body === undefined) {

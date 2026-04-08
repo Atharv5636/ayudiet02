@@ -23,6 +23,7 @@ import {
 import { adjustPlanByTrend, analyzeProgress } from "@/utils/progressionEngine";
 import { generateProgressExplanation } from "@/utils/explainEngine";
 import { autoImprovePlan } from "@/utils/autoImprovePlanEngine";
+import { resolveApiAssetUrl } from "../../utils/apiBaseUrl";
 
 const createMealDay = (index) => ({
   day: `Day ${index + 1}`,
@@ -95,11 +96,7 @@ const formatDateTimeDayMonthYear = (value) => {
 };
 const resolvePatientPhotoUrl = (patient = {}) => {
   const raw = String(patient?.photo?.url || "").trim();
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-  const base = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/g, "");
-  if (!base) return raw;
-  return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+  return resolveApiAssetUrl(raw);
 };
 const getPatientInitials = (name = "") => {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
