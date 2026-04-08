@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import { fetchJson } from "../../services/api";
+import { persistAuthSession } from "../../utils/authSession";
 
 function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -28,11 +29,7 @@ function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
           body: JSON.stringify({ clerkToken }),
         });
 
-        localStorage.setItem("token", data.token);
-        const doctorName = data?.doctor?.name || "";
-        if (doctorName) {
-          localStorage.setItem("doctorName", doctorName);
-        }
+        persistAuthSession(data);
 
         completedRef.current = true;
         onSuccess?.();

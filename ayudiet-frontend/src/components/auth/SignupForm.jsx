@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { fetchJson } from "../../services/api";
 import AuthTextField from "./AuthTextField";
 import { isValidEmail } from "../../utils/authValidation";
+import { persistAuthSession } from "../../utils/authSession";
 
 const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
@@ -40,8 +41,10 @@ function SignupForm() {
         return;
       }
 
+      window.google.accounts.id.disableAutoSelect();
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
+        auto_select: false,
         callback: async (response) => {
           if (!response?.credential) return;
 
@@ -56,11 +59,7 @@ function SignupForm() {
               body: JSON.stringify({ idToken: response.credential }),
             });
 
-            localStorage.setItem("token", data.token);
-            const doctorName = data?.doctor?.name || "";
-            if (doctorName) {
-              localStorage.setItem("doctorName", doctorName);
-            }
+            persistAuthSession(data);
             navigate("/dashboard");
           } catch (error) {
             setMessage(error.message || "Google signup failed");

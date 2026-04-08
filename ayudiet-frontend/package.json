@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "node scripts/render-start.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

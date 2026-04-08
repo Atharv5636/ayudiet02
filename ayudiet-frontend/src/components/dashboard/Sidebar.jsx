@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import logo from "../../assets/sidebar-logo.png";
+import { clearAuthSession } from "../../utils/authSession";
 
 function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
@@ -24,8 +25,7 @@ function Sidebar({ isOpen, onClose }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("doctorName");
+    clearAuthSession();
     navigate("/login");
   };
 

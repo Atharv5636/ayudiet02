@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fetchJson } from "../../services/api";
+import { clearAuthSession } from "../../utils/authSession";
 
 function PatientsSection() {
   const [patients, setPatients] = useState([]);
@@ -22,8 +23,7 @@ function PatientsSection() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("doctorName");
+    clearAuthSession();
     window.location.href = "/login";
   };
 

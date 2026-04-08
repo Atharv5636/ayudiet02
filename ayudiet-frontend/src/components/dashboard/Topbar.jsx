@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
+import { clearAuthSession } from "../../utils/authSession";
 
 function getDoctorNameFromToken(token) {
   try {
@@ -98,8 +99,7 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
   }, [patients, search]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("doctorName");
+    clearAuthSession();
     navigate("/login");
   };
 
