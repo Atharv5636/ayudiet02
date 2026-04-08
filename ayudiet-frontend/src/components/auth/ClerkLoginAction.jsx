@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import { fetchJson } from "../../services/api";
-import { persistAuthSession } from "../../utils/authSession";
+import { completeAuthLogin } from "../../utils/authSession";
 
 function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -29,7 +29,7 @@ function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
           body: JSON.stringify({ clerkToken }),
         });
 
-        persistAuthSession(data);
+        await completeAuthLogin(data);
 
         completedRef.current = true;
         onSuccess?.();

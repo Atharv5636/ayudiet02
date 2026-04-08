@@ -1,3 +1,5 @@
+import { fetchJson } from "../services/api";
+
 export function persistAuthSession(data) {
   const token = String(data?.token || "").trim();
   const doctorName = String(data?.doctor?.name || "").trim();
@@ -14,6 +16,23 @@ export function persistAuthSession(data) {
   if (doctorEmail) {
     localStorage.setItem("doctorEmail", doctorEmail);
   }
+}
+
+export async function completeAuthLogin(data) {
+  const token = String(data?.token || "").trim();
+  if (!token) {
+    throw new Error("Login succeeded but no app token was returned");
+  }
+
+  persistAuthSession(data);
+
+  await fetchJson("/auth/me", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  window.location.assign("/dashboard");
 }
 
 export function clearAuthSession() {

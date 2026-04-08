@@ -5,7 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { fetchJson } from "../../services/api";
 import AuthTextField from "./AuthTextField";
 import { isValidEmail } from "../../utils/authValidation";
-import { persistAuthSession } from "../../utils/authSession";
+import { completeAuthLogin } from "../../utils/authSession";
 
 const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
@@ -56,8 +56,7 @@ function LoginForm() {
               body: JSON.stringify({ idToken: response.credential }),
             });
 
-            persistAuthSession(data);
-            navigate("/dashboard");
+            await completeAuthLogin(data);
           } catch (error) {
             setMessage(error.message || "Google login failed");
           } finally {
@@ -129,7 +128,7 @@ function LoginForm() {
         body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
-      persistAuthSession({
+      await completeAuthLogin({
         ...data,
         doctor: {
           ...data?.doctor,
@@ -137,7 +136,6 @@ function LoginForm() {
           email: data?.doctor?.email || normalizedEmail,
         },
       });
-      navigate("/dashboard");
     } catch (error) {
       setMessage(error.message || "Server error");
     } finally {
