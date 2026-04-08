@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PDFDownloadLink, PDFViewer } from "@react-pdf/renderer";
 import DietPlanPDF from "@/components/DietPlanPDF";
+import BackNavLink from "@/components/common/BackNavLink";
 import { fetchJson } from "@/services/api";
 import { fetchPlansByPatient } from "@/services/plan.service";
 
@@ -170,6 +171,7 @@ function DownloadPlan() {
   return (
     <div className="min-h-screen text-gray-900">
       <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 space-y-6">
+        <BackNavLink to="/dashboard" label="Back to Dashboard" />
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h1 className="text-2xl font-semibold text-gray-900">Download Diet Plan</h1>
           <p className="mt-1 text-sm text-gray-600">

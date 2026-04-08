@@ -17,7 +17,7 @@ function PatientsSection() {
 
       setPatients(data.patients);
     } catch (error) {
-      setMessage(error.message || "Error fetching patients");
+      setMessage(error.message || "Unable to load patients.");
     }
   };
 
@@ -57,7 +57,7 @@ function PatientsSection() {
     {/* Patients Grid */}
     {patients.length === 0 ? (
       <div className="text-gray-600">
-        No patients found
+        No patients were found.
       </div>
     ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

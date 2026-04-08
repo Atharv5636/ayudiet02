@@ -1,11 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
+import {
+  uploadPatientDocument,
+  uploadPatientPhoto,
+} from "../../services/patient.service";
+import BackNavLink from "../../components/common/BackNavLink";
 
 const mockPatientForm = {
   name: "Neha Verma",
   age: "29",
   gender: "female",
+  dateOfBirth: "1997-05-14",
+  bloodGroup: "B+",
+  phone: "9876543210",
+  emergencyContactName: "Rahul Verma",
+  emergencyContactPhone: "9876500000",
   height: "162",
   weight: "58",
   healthConditions: "Low energy, mild acidity",
@@ -31,6 +41,11 @@ function AddPatient() {
     name: "",
     age: "",
     gender: "",
+    dateOfBirth: "",
+    bloodGroup: "",
+    phone: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
     height: "",
     weight: "",
     healthConditions: "",
@@ -51,6 +66,8 @@ function AddPatient() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -61,6 +78,16 @@ function AddPatient() {
     setError("");
   };
 
+  const handleFileChange = (event) => {
+    setSelectedFile(event.target.files?.[0] || null);
+    setError("");
+  };
+
+  const handlePhotoChange = (event) => {
+    setSelectedPhoto(event.target.files?.[0] || null);
+    setError("");
+  };
+
   const addMockPatient = async () => {
     setError("");
     setLoading(true);
@@ -68,7 +95,7 @@ function AddPatient() {
     try {
       const token = localStorage.getItem("token");
 
-      await fetchJson("/patients", {
+      const createdPatient = await fetchJson("/patients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -78,6 +105,12 @@ function AddPatient() {
           name: mockPatientForm.name,
           age: Number(mockPatientForm.age),
           gender: mockPatientForm.gender,
+          dateOfBirth: mockPatientForm.dateOfBirth || undefined,
+          bloodGroup: mockPatientForm.bloodGroup || undefined,
+          phone: mockPatientForm.phone || undefined,
+          emergencyContactName: mockPatientForm.emergencyContactName || undefined,
+          emergencyContactPhone:
+            mockPatientForm.emergencyContactPhone || undefined,
           height: Number(mockPatientForm.height),
           weight: Number(mockPatientForm.weight),
           healthConditions: mockPatientForm.healthConditions,
@@ -102,9 +135,16 @@ function AddPatient() {
         }),
       });
 
+      if (selectedFile && createdPatient?.patient?._id) {
+        await uploadPatientDocument(createdPatient.patient._id, selectedFile);
+      }
+      if (selectedPhoto && createdPatient?.patient?._id) {
+        await uploadPatientPhoto(createdPatient.patient._id, selectedPhoto);
+      }
+
       navigate("/dashboard/patients");
     } catch (err) {
-      setError(err.message || "Failed to add mock patient");
+      setError(err.message || "Unable to add the mock patient.");
     } finally {
       setLoading(false);
     }
@@ -124,7 +164,7 @@ function AddPatient() {
     try {
       const token = localStorage.getItem("token");
 
-      await fetchJson("/patients", {
+      const createdPatient = await fetchJson("/patients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -134,6 +174,11 @@ function AddPatient() {
           name: form.name,
           age: Number(form.age),
           gender: form.gender,
+          dateOfBirth: form.dateOfBirth || undefined,
+          bloodGroup: form.bloodGroup || undefined,
+          phone: form.phone || undefined,
+          emergencyContactName: form.emergencyContactName || undefined,
+          emergencyContactPhone: form.emergencyContactPhone || undefined,
 
           height: form.height ? Number(form.height) : undefined,
           weight: form.weight ? Number(form.weight) : undefined,
@@ -165,6 +210,13 @@ function AddPatient() {
         }),
       });
 
+      if (selectedFile && createdPatient?.patient?._id) {
+        await uploadPatientDocument(createdPatient.patient._id, selectedFile);
+      }
+      if (selectedPhoto && createdPatient?.patient?._id) {
+        await uploadPatientPhoto(createdPatient.patient._id, selectedPhoto);
+      }
+
       navigate("/dashboard/patients");
     } catch (err) {
       setError(err.message);
@@ -174,7 +226,8 @@ function AddPatient() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-4">
+      <BackNavLink to="/dashboard/patients" label="Back to Patients" />
       <div className="rounded-2xl border border-gray-200 bg-white p-10 shadow-sm transition-all duration-200 hover:shadow-md">
         <h1 className="mb-10 text-center text-2xl font-semibold text-gray-900">
           Add Patient
@@ -209,9 +262,42 @@ function AddPatient() {
               />
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Input
+                label="Date of Birth"
+                type="date"
+                name="dateOfBirth"
+                value={form.dateOfBirth}
+                onChange={handleChange}
+              />
+              <Select
+                label="Blood Group"
+                name="bloodGroup"
+                value={form.bloodGroup}
+                onChange={handleChange}
+                options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]}
+              />
+              <Input label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input label="Height (cm)" name="height" value={form.height} onChange={handleChange} />
               <Input label="Weight (kg)" name="weight" value={form.weight} onChange={handleChange} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Emergency Contact Name"
+                name="emergencyContactName"
+                value={form.emergencyContactName}
+                onChange={handleChange}
+              />
+              <Input
+                label="Emergency Contact Phone"
+                name="emergencyContactPhone"
+                value={form.emergencyContactPhone}
+                onChange={handleChange}
+              />
             </div>
           </Section>
 
@@ -272,6 +358,10 @@ function AddPatient() {
                 "weight loss",
                 "muscle gain",
                 "blood sugar control",
+                "diabetes support",
+                "pcos support",
+                "thyroid support",
+                "hypertension support",
                 "better digestion",
                 "general wellness",
               ]}
@@ -331,6 +421,21 @@ function AddPatient() {
                 options={["1", "2", "3", "4", "5"]}
               />
             </div>
+          </Section>
+
+          <Section title="Attachments (Optional)">
+            <Input
+              label="📷 Upload Patient Photo"
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              onChange={handlePhotoChange}
+            />
+            <Input
+              label="📄 Upload Report PDF"
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handleFileChange}
+            />
           </Section>
 
           {error && <p className="text-sm text-gray-600">{error}</p>}

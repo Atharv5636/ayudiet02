@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
+import BackNavLink from "../../components/common/BackNavLink";
 
 function Patients() {
   const navigate = useNavigate();
@@ -37,12 +38,24 @@ function Patients() {
     fetchPatients();
   }, []);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [patients.length]);
+  const getInitials = (name = "") => {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "PT";
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("");
+  };
+
+  const resolvePhotoUrl = (patient) => {
+    const raw = String(patient?.photo?.url || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    const base = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/g, "");
+    if (!base) return raw;
+    return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+  };
 
   return (
     <div className="space-y-4">
+      <BackNavLink to="/dashboard" label="Back to Dashboard" />
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
         <button
@@ -55,7 +68,7 @@ function Patients() {
       </div>
 
       {patients.length === 0 ? (
-        <p className="text-gray-600">No patients found</p>
+        <p className="text-gray-600">No patients were found.</p>
       ) : (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow-md">
           <div className="space-y-3">
@@ -65,11 +78,24 @@ function Patients() {
                 className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="rounded-xl bg-gray-50 px-4 py-3">
-                    <p className="inline-block rounded-md bg-yellow-300 px-2.5 py-0.5 text-lg font-semibold text-gray-900">
-                      {p.name}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">Age: {p.age}</p>
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3">
+                    {resolvePhotoUrl(p) ? (
+                      <img
+                        src={resolvePhotoUrl(p)}
+                        alt={p.name || "Patient"}
+                        className="h-12 w-12 rounded-full border border-gray-200 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                        {getInitials(p?.name)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="inline-block rounded-md bg-yellow-300 px-2.5 py-0.5 text-lg font-semibold text-gray-900">
+                        {p.name}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">Age: {p.age}</p>
+                    </div>
                   </div>
 
                   <div className="inline-flex items-center gap-2 self-start sm:self-center">

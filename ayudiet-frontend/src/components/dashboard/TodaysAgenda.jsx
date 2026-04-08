@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const initialForm = {
@@ -39,21 +39,16 @@ function TodaysAgenda({
   const ITEMS_PER_PAGE = 3;
 
   const totalPages = Math.max(1, Math.ceil((agenda?.length || 0) / ITEMS_PER_PAGE));
+  const clampedCurrentPage = Math.min(currentPage, totalPages);
 
   const paginatedAgenda = useMemo(() => {
     const list = agenda || [];
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const start = (clampedCurrentPage - 1) * ITEMS_PER_PAGE;
     return list.slice(start, start + ITEMS_PER_PAGE);
-  }, [agenda, currentPage]);
+  }, [agenda, clampedCurrentPage]);
 
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const startIndex = (clampedCurrentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, agenda?.length || 0);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -267,7 +262,7 @@ function TodaysAgenda({
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              disabled={currentPage === 1}
+              disabled={clampedCurrentPage === 1}
               className="h-8 min-w-[72px] rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Prev
@@ -280,7 +275,7 @@ function TodaysAgenda({
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages}
+              disabled={clampedCurrentPage === totalPages}
               className="h-8 min-w-[72px] rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Next

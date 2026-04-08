@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 import PlansAwaitingReview from "../../components/dashboard/PlansAwaitingReview";
 import TodaysAgenda from "../../components/dashboard/TodaysAgenda";
-import TrendBarChart from "../../components/dashboard/TrendBarChart";
+import PatientProgressChart from "../../components/dashboard/PatientProgressChart";
 import { getTrend, getTrendColor, getTrendLabel } from "@/utils/trendUtils";
 
 import {
   approvePlan,
+  fetchActivePlans,
   fetchPendingPlans,
-  fetchPlansByPatient,
   rejectPlan,
 } from "../../services/plan.service";
 import { fetchJson } from "../../services/api";
@@ -27,6 +27,30 @@ const ACTIVE_SEGMENTS_BY_DIGIT = {
   7: ["a", "b", "c"],
   8: ["a", "b", "c", "d", "e", "f", "g"],
   9: ["a", "b", "c", "d", "f", "g"],
+};
+
+const getObjectIdTimestamp = (id) => {
+  if (typeof id !== "string" || id.length < 8) return Number.NaN;
+  const parsed = Number.parseInt(id.slice(0, 8), 16);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return parsed * 1000;
+};
+
+const getHistoryTimestamp = (item, fallbackIndex = 0) => {
+  const directDate = item?.date || item?.recordedAt || item?.createdAt || item?.loggedAt || null;
+  const directTime = directDate ? new Date(directDate).getTime() : Number.NaN;
+  if (Number.isFinite(directTime) && directTime > 0) {
+    return directTime;
+  }
+
+  const idTime = getObjectIdTimestamp(
+    typeof item?._id === "string" ? item._id : typeof item?.id === "string" ? item.id : ""
+  );
+  if (Number.isFinite(idTime)) {
+    return idTime;
+  }
+
+  return fallbackIndex;
 };
 
 function SevenSegmentDigit({ digit }) {
@@ -104,8 +128,9 @@ function Dashboard() {
   const [selectedActivePlan, setSelectedActivePlan] = useState(null);
   const [pendingPlans, setPendingPlans] = useState([]);
   const [activePlans, setActivePlans] = useState([]);
+  const [activePlansError, setActivePlansError] = useState("");
   const [showMockData, setShowMockData] = useState(true);
-  const [appliedPlans, setAppliedPlans] = useState({});
+  const [appliedPlans, _setAppliedPlans] = useState({});
   const [loadingPlans, setLoadingPlans] = useState({});
   const [activePlanPage, setActivePlanPage] = useState(1);
   const [criticalPatientPage, setCriticalPatientPage] = useState(1);
@@ -120,13 +145,16 @@ function Dashboard() {
     );
   }, [activePlans, showMockData]);
 
-  const getPlanAnalysis = (entry) =>
-    entry?.analysis ||
-    entry?.adaptiveAnalysis ||
-    entry?.latestAnalysis ||
-    entry?.insights ||
-    entry?.planAnalysis ||
-    null;
+  const getPlanAnalysis = useCallback(
+    (entry) =>
+      entry?.analysis ||
+      entry?.adaptiveAnalysis ||
+      entry?.latestAnalysis ||
+      entry?.insights ||
+      entry?.planAnalysis ||
+      null,
+    []
+  );
 
   const getTrendValue = (entry) => {
     const trend = getPlanAnalysis(entry)?.effectivenessTrend || entry?.effectivenessTrend;
@@ -148,7 +176,7 @@ function Dashboard() {
       typeof trend?.previous === "number" &&
       typeof trend?.current === "number"
     ) {
-      return `${trend.previous} → ${trend.current}`;
+      return `${trend.previous} -> ${trend.current}`;
     }
 
     return "No delta";
@@ -159,10 +187,47 @@ function Dashboard() {
     entry?.effectiveness?.score ??
     null;
 
-  const getPrimaryIssue = (entry) =>
-    getPlanAnalysis(entry)?.primaryIssue ||
-    entry?.primaryIssue ||
-    "none";
+  const getPrimaryIssue = (entry) => {
+    const rawAnalysisIssue =
+      getPlanAnalysis(entry)?.primaryIssue || entry?.primaryIssue || "";
+    const analysisIssue = String(rawAnalysisIssue).trim();
+    const normalizedAnalysisIssue = analysisIssue.toLowerCase();
+    const isPlaceholderIssue = [
+      "",
+      "-",
+      "none",
+      "n/a",
+      "na",
+      "null",
+      "undefined",
+      "unknown",
+    ].includes(normalizedAnalysisIssue);
+    if (!isPlaceholderIssue) {
+      return analysisIssue;
+    }
+
+    const validationIssues = Array.isArray(entry?.validation?.issues)
+      ? entry.validation.issues
+      : [];
+    const firstValidationIssue = validationIssues.find(
+      (issue) => typeof issue === "string" && issue.trim()
+    );
+    if (firstValidationIssue) {
+      return firstValidationIssue
+        .replace(/^warning\s*/i, "")
+        .replace(/^issue\s*/i, "")
+        .trim();
+    }
+
+    const riskFlags = Array.isArray(entry?.risk_flags) ? entry.risk_flags : [];
+    if (riskFlags.length > 0 && !riskFlags.includes("none")) {
+      return riskFlags
+        .map((flag) => String(flag).replaceAll("_", " "))
+        .join(", ");
+    }
+
+    return "Insufficient progress data";
+  };
 
   const getReasonSummary = (entry) =>
     getPlanAnalysis(entry)?.reasonSummary ||
@@ -174,14 +239,7 @@ function Dashboard() {
     entry?.expectedImpact ||
     "No expected impact available.";
 
-  const getLatestPlanForPatient = (patient) =>
-    filteredPlans.find((plan) => {
-      const planPatientId =
-        typeof plan?.patient === "object" ? plan?.patient?._id : plan?.patient;
-      return planPatientId === patient._id;
-    }) || null;
-
-  function getAttentionScore(plan) {
+  const getAttentionScore = useCallback((plan) => {
     let score = 0;
 
     const analysis = plan?.analysis || getPlanAnalysis(plan) || {};
@@ -213,7 +271,7 @@ function Dashboard() {
     if (issue.includes("progress")) score += 1;
 
     return score;
-  }
+  }, [getPlanAnalysis]);
 
   function getPriorityLabel(score) {
     if (score >= 6) return "Critical";
@@ -234,15 +292,6 @@ function Dashboard() {
 
     const diffHr = Math.floor(diffMin / 60);
     return `${diffHr} hr ago`;
-  }
-
-  function getExactDateTime(computedAt) {
-    if (!computedAt) return null;
-
-    const dateObj = new Date(computedAt);
-    if (isNaN(dateObj.getTime())) return null;
-
-    return dateObj.toLocaleString();
   }
 
   function extractStartEndFromReason(reason) {
@@ -306,7 +355,7 @@ function Dashboard() {
 
   function handleSendMessage(plan, formattedPhone) {
     if (!formattedPhone) {
-      alert("Invalid or missing phone number");
+      alert("The phone number is missing or invalid.");
       return;
     }
 
@@ -319,50 +368,9 @@ function Dashboard() {
     }
   }
 
-  const getPatientIntelligence = (patient) => {
-    const linkedPlan = getLatestPlanForPatient(patient);
-    const source = linkedPlan || patient;
-    const score = getEffectivenessScore(source);
-    const primaryIssue = getPrimaryIssue(source);
-    const trend = getTrendValue(source) || "stable";
-    const delta = getTrendDelta(source);
-
-    return {
-      score,
-      primaryIssue,
-      trend,
-      delta,
-    };
-  };
-
   const isImmediateAttention = (plan) => (plan?.attentionScore ?? 0) >= 5;
 
-  const needsAttention = (entry) => {
-    const score = entry?.dashboardIntelligence?.score ?? getEffectivenessScore(entry);
-    const trend = entry?.dashboardIntelligence?.trend ?? getTrendValue(entry) ?? "stable";
-    const primaryIssue =
-      entry?.dashboardIntelligence?.primaryIssue ?? getPrimaryIssue(entry);
-
-    return (
-      (typeof score === "number" && score < 60) ||
-      trend === "down" ||
-      primaryIssue === "adherence"
-    );
-  };
-
   const formatTrendLabel = (trend) => getTrendLabel(trend);
-
-  const getTrendTone = (trend) => {
-    if (trend === "down") {
-      return "text-gray-700";
-    }
-
-    if (trend === "up") {
-      return "text-gray-700";
-    }
-
-    return "text-gray-700";
-  };
 
   const getTrendMeta = (trend) => {
     if (trend === "down") {
@@ -412,7 +420,7 @@ function Dashboard() {
       ...plan,
       attentionScore: getAttentionScore(plan),
     }));
-  }, [filteredPlans]);
+  }, [filteredPlans, getAttentionScore]);
 
   const patientsNeedingAttention = plansWithScore.filter(
     (plan) => plan.attentionScore >= 5
@@ -426,11 +434,6 @@ function Dashboard() {
   const lowAdherenceCases = plansWithScore.filter((plan) => {
     const issue = plan.analysis?.primaryIssue || "";
     return issue.toLowerCase().includes("adherence");
-  }).length;
-
-  const lowEnergyCases = plansWithScore.filter((plan) => {
-    const issue = plan.analysis?.primaryIssue || "";
-    return issue.toLowerCase().includes("energy");
   }).length;
 
   const sortedCriticalPatients = useMemo(() => {
@@ -495,19 +498,14 @@ function Dashboard() {
     }
   };
 
-  const loadActivePlans = async (patientList = patients) => {
+  const loadActivePlans = async () => {
     try {
-      const activePlansByPatient = await Promise.all(
-        patientList.map(async (patient) => {
-          const data = await fetchPlansByPatient(patient._id);
-          const patientPlans = data?.plans || [];
-          return patientPlans.filter((plan) => plan?.isActive === true);
-        })
-      );
-
-      setActivePlans(activePlansByPatient.flat());
+      const data = await fetchActivePlans();
+      setActivePlansError("");
+      setActivePlans(data?.plans || []);
     } catch (error) {
       console.error(error);
+      setActivePlansError(error?.message || "Unable to load active plan insights.");
       setActivePlans([]);
     }
   };
@@ -523,10 +521,10 @@ function Dashboard() {
     try {
       await approvePlan(planId);
       await Promise.all([loadPendingPlans(), loadActivePlans()]);
-      showToast("Plan approved successfully");
+      showToast("The plan was approved successfully.");
     } catch (error) {
       console.error("APPROVE ERROR:", error);
-      showToast("Failed to approve plan");
+      showToast("Unable to approve the plan.");
       throw error;
     }
   };
@@ -567,7 +565,7 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      alert("Session expired. Please login again.");
+      alert("Session expired. Please log in again.");
       return;
     }
 
@@ -585,7 +583,7 @@ function Dashboard() {
       });
 
       if (!response || !response.plan) {
-        throw new Error("Invalid server response");
+        throw new Error("Invalid server response.");
       }
 
       const updatedPlan = response.plan;
@@ -596,10 +594,10 @@ function Dashboard() {
         )
       );
 
-      alert(response?.message || "Changes applied successfully");
+      alert(response?.message || "Changes were applied successfully.");
     } catch (error) {
       console.error("Failed to apply adjustments:", error);
-      alert("Failed to apply changes. Please try again.");
+      alert("Unable to apply changes. Please try again.");
     } finally {
       setLoadingPlans((prev) => ({
         ...prev,
@@ -622,10 +620,10 @@ function Dashboard() {
 
         await Promise.all([
           loadPendingPlans(),
-          loadActivePlans(loadedPatients),
+          loadActivePlans(),
         ]);
       } catch (error) {
-        setMessage(error.message || "Error fetching dashboard data");
+        setMessage(error.message || "Unable to load dashboard data.");
         console.error("Failed to fetch plans", error);
       }
     };
@@ -727,22 +725,50 @@ function Dashboard() {
               ) : paginatedCriticalPatients.length === 0 ? (
                 <p className="text-sm text-gray-600">No high-risk patients</p>
               ) : (
-                paginatedCriticalPatients.map((plan) => (
-                  <div
-                    key={plan._id}
-                    className="rounded-xl border border-gray-200 bg-white p-4"
-                  >
-                    <p className="text-sm font-medium text-gray-900">
-                      {plan.patient?.name || "Unknown"}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      {plan.analysis?.primaryIssue || "-"} - {plan.analysis?.trend || "-"}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Priority: {plan.attentionScore}
-                    </p>
-                  </div>
-                ))
+                paginatedCriticalPatients.map((plan) => {
+                  const patientName = plan?.patient?.name || "Unknown";
+                  const trend = getTrendValue(plan);
+                  const trendLabel = getTrendLabel(trend);
+                  const issue = getPrimaryIssue(plan);
+                  const issueLabel =
+                    issue && !["-", "none", "n/a", "unknown"].includes(String(issue).toLowerCase())
+                      ? issue
+                      : "No major issue";
+                  const priorityLabel = getPriorityLabel(plan.attentionScore);
+                  const priorityTone =
+                    priorityLabel === "Critical"
+                      ? "bg-gray-100 text-gray-700 ring-1 ring-gray-200 underline decoration-red-600 decoration-2 underline-offset-4"
+                      : priorityLabel === "Moderate"
+                        ? "bg-gray-100 text-gray-700 ring-1 ring-gray-200 underline decoration-amber-600 decoration-2 underline-offset-4"
+                        : "bg-gray-100 text-gray-700 ring-1 ring-gray-200 underline decoration-emerald-600 decoration-2 underline-offset-4";
+
+                  return (
+                    <div
+                      key={plan._id}
+                      className="rounded-xl border border-gray-200 bg-white p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-base font-semibold text-gray-900">{patientName}</p>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${priorityTone}`}
+                        >
+                          {priorityLabel}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                          Trend: {trendLabel}
+                        </span>
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                          Score: {plan.attentionScore}
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-xs text-gray-600">Issue: {issueLabel}</p>
+                    </div>
+                  );
+                })
               )}
             </div>
 
@@ -823,7 +849,16 @@ function Dashboard() {
             </p>
           </div>
 
-          {sortedActivePlans.length === 0 ? (
+          {activePlansError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-medium text-red-700">
+                Unable to load active plan insights.
+              </p>
+              <p className="mt-1 text-sm text-red-600">
+                {activePlansError}
+              </p>
+            </div>
+          ) : sortedActivePlans.length === 0 ? (
             <p className="text-sm text-gray-600">No active plan insights available.</p>
           ) : (
             <div className="space-y-4">
@@ -852,49 +887,91 @@ function Dashboard() {
                   typeof chartPrevious === "number" &&
                   typeof chartCurrent === "number";
                 const chartUnit = reasonTrend?.unit || "";
-                const defaultChartData = [
-                  { name: "1", value: 63 },
-                  { name: "2", value: 60 },
-                  { name: "3", value: 58 },
-                  { name: "4", value: 55 },
-                  { name: "5", value: 50 },
-                ];
                 const adherenceHistory = Array.isArray(plan?.adherenceHistory)
                   ? plan.adherenceHistory
                   : Array.isArray(plan?.analysis?.adherenceHistory)
                     ? plan.analysis.adherenceHistory
                     : [];
-                const sortedHistory = [...adherenceHistory].sort((a, b) => {
-                  const aTime = new Date(
-                    a?.date || a?.createdAt || a?.loggedAt || 0
-                  ).getTime();
-                  const bTime = new Date(
-                    b?.date || b?.createdAt || b?.loggedAt || 0
-                  ).getTime();
-                  if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return 0;
-                  return aTime - bTime;
-                });
+                const sortedHistory = adherenceHistory
+                  .map((item, index) => ({
+                    item,
+                    index,
+                    time: getHistoryTimestamp(item, index),
+                  }))
+                  .sort((left, right) => left.time - right.time || left.index - right.index)
+                  .map((entry) => entry.item);
                 const mappedHistoryData = sortedHistory
                   .map((item, index) => {
-                    if (typeof item === "number") return { name: `${index + 1}`, value: item };
+                    const dateValue =
+                      item?.date || item?.recordedAt || item?.createdAt || item?.loggedAt || null;
+                    const parsedDate = dateValue ? new Date(dateValue) : null;
+                    const hasValidDate =
+                      parsedDate instanceof Date &&
+                      Number.isFinite(parsedDate.getTime());
+                    const fallbackLabel = `Point ${index + 1}`;
+                    const label = hasValidDate
+                      ? parsedDate.toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })
+                      : `${index + 1}`;
+
+                    if (typeof item === "number") {
+                      return {
+                        label,
+                        tooltipLabel: fallbackLabel,
+                        value: item,
+                      };
+                    }
+
                     if (typeof item?.score === "number") {
-                      return { name: `${index + 1}`, value: item.score };
+                      return {
+                        label,
+                        tooltipLabel: hasValidDate
+                          ? parsedDate.toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : fallbackLabel,
+                        value: item.score,
+                      };
                     }
+
                     if (typeof item?.value === "number") {
-                      return { name: `${index + 1}`, value: item.value };
+                      return {
+                        label,
+                        tooltipLabel: hasValidDate
+                          ? parsedDate.toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : fallbackLabel,
+                        value: item.value,
+                      };
                     }
+
                     return null;
                   })
                   .filter(Boolean);
-                const chartData =
-                  mappedHistoryData.length > 1
-                    ? mappedHistoryData
-                    : hasChartPoints
-                      ? [
-                          { name: "1", value: chartPrevious },
-                          { name: "2", value: chartCurrent },
-                        ]
-                      : defaultChartData;
+                const hasHistoryChart = mappedHistoryData.length > 1;
+                const chartData = hasHistoryChart
+                  ? mappedHistoryData
+                  : hasChartPoints
+                    ? [
+                        {
+                          label: "Previous",
+                          tooltipLabel: "Previous reading",
+                          value: chartPrevious,
+                        },
+                        {
+                          label: "Current",
+                          tooltipLabel: "Current reading",
+                          value: chartCurrent,
+                        },
+                      ]
+                    : [];
                 const formatChartValue = (value) =>
                   typeof value === "number"
                     ? Number.isInteger(value)
@@ -904,7 +981,16 @@ function Dashboard() {
                 const chartChangeLabel = hasChartPoints
                   ? `${formatChartValue(chartPrevious)}${chartUnit} → ${formatChartValue(chartCurrent)}${chartUnit}`
                   : "-";
-                const chartTrend = getTrend(chartPrevious, chartCurrent);
+                const historyStart = hasHistoryChart ? chartData[0]?.value : null;
+                const historyEnd = hasHistoryChart
+                  ? chartData[chartData.length - 1]?.value
+                  : null;
+                const chartTrend = hasHistoryChart
+                  ? getTrend(historyStart, historyEnd)
+                  : getTrend(chartPrevious, chartCurrent);
+                const chartChangeDisplay = hasHistoryChart
+                  ? `${formatChartValue(historyStart)}${chartUnit} → ${formatChartValue(historyEnd)}${chartUnit}`
+                  : chartChangeLabel;
                 const trendLabel = getTrendLabel(chartTrend);
                 const trendColor = getTrendColor(chartTrend);
                 const patientName = plan.patient?.name || "Unknown Patient";
@@ -915,6 +1001,13 @@ function Dashboard() {
                   null;
                 const primaryIssue = plan.analysis?.primaryIssue ?? "Not enough data";
                 const adjustments = plan.adjustments || [];
+                const normalizedIssue = String(primaryIssue || "").trim();
+                const hasMeaningfulIssue =
+                  normalizedIssue &&
+                  !["-", "none", "n/a", "na", "unknown", "not enough data"].includes(
+                    normalizedIssue.toLowerCase()
+                  );
+                const hasRecommendedActions = Array.isArray(adjustments) && adjustments.length > 0;
                 const formattedPhone = formatPhone(plan?.patient?.phone);
                 const score =
                   plan.analysis?.effectiveness?.score ??
@@ -933,8 +1026,18 @@ function Dashboard() {
                 const evaluatedAt =
                   plan.analysis?.computedAt || plan.updatedAt || plan.createdAt;
                 const timeLabel = getRelativeTime(evaluatedAt);
-                const exactTimeLabel = getExactDateTime(evaluatedAt);
                 const statusNeedsAttention = isImmediateAttention(plan);
+                const statusLabel = hasScoreData
+                  ? numericScore < 50
+                    ? "Needs Attention"
+                    : "Stable"
+                  : statusNeedsAttention
+                    ? "Needs Attention"
+                    : "Stable";
+                const statusBadgeClass =
+                  statusLabel === "Needs Attention"
+                    ? "bg-black text-white ring-1 ring-black/20"
+                    : "bg-gray-100 text-gray-700 ring-1 ring-gray-200 underline decoration-emerald-600 decoration-2 underline-offset-4";
 
                 return (
                   <div
@@ -953,18 +1056,10 @@ function Dashboard() {
                                 Age: {patientAge ?? "-"}
                               </p>
                             </div>
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                              (hasScoreData && numericScore < 50) || (!hasScoreData && statusNeedsAttention)
-                                ? "bg-black text-white"
-                                : "bg-gray-100 text-gray-700"
-                            }`}>
-                              {hasScoreData
-                                ? numericScore < 50
-                                  ? "Needs Attention"
-                                  : "Stable"
-                                : statusNeedsAttention
-                                  ? "Needs Attention"
-                                  : "Stable"}
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClass}`}
+                            >
+                              {statusLabel}
                             </span>
                           </div>
                           <p className="text-xs text-gray-400">
@@ -984,10 +1079,8 @@ function Dashboard() {
 
                         <div className="space-y-1.5">
                           <p className="text-xs uppercase tracking-wide text-gray-400">Issue</p>
-                          <p className="text-sm text-gray-600">
-                            {primaryIssue && primaryIssue !== "Not enough data"
-                              ? primaryIssue
-                              : "-"}
+                          <p className="text-sm text-gray-700">
+                            {hasMeaningfulIssue ? normalizedIssue : "No major issue flagged yet"}
                           </p>
                         </div>
 
@@ -995,13 +1088,17 @@ function Dashboard() {
                           <p className="text-xs uppercase tracking-wide text-gray-400">
                             Recommended Action
                           </p>
-                          <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600">
-                            {adjustments.length > 0 ? (
-                              adjustments.map((item, index) => <li key={index}>{item}</li>)
-                            ) : (
-                              <li>-</li>
-                            )}
-                          </ul>
+                          {hasRecommendedActions ? (
+                            <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600">
+                              {adjustments.map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-700">
+                              No immediate adjustment needed. Continue monitoring.
+                            </p>
+                          )}
                         </div>
 
                         <div className="mt-2">
@@ -1060,12 +1157,19 @@ function Dashboard() {
                           </div>
 
                           <div className="bg-gray-50 rounded-xl p-3">
-                            <TrendBarChart data={chartData} trend={chartTrend} />
+                            <PatientProgressChart
+                              data={chartData}
+                              trend={chartTrend}
+                              unit={chartUnit || "%"}
+                              valueLabel="Adherence Score"
+                            />
                           </div>
 
                           <div className="space-y-1.5">
                             <p className="text-xs tracking-wide text-gray-400">Change</p>
-                            <p className="text-sm text-gray-600">{chartChangeLabel}</p>
+                            <p className="text-sm text-gray-600">
+                              {chartChangeDisplay === "-" ? "Awaiting enough points" : chartChangeDisplay}
+                            </p>
                           </div>
                         </div>
                       </div>

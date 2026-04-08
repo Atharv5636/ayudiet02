@@ -1,23 +1,136 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { fetchJson } from "../../services/api";
+import AuthTextField from "./AuthTextField";
+import { isValidEmail } from "../../utils/authValidation";
+import ClerkLoginAction from "./ClerkLoginAction";
+
+const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const GOOGLE_ONLY_LOGIN = true;
+const CLERK_AUTH_ENABLED = import.meta.env.VITE_ENABLE_CLERK_AUTH === "true";
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleButtonRef = useRef(null);
 
   const navigate = useNavigate();
+  const isGoogleLoginEnabled = GOOGLE_AUTH_ENABLED && Boolean(GOOGLE_CLIENT_ID);
+
+  useEffect(() => {
+    if (!GOOGLE_AUTH_ENABLED || !GOOGLE_CLIENT_ID || !googleButtonRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    const scriptId = "google-identity-services";
+
+    const initializeGoogle = () => {
+      if (
+        cancelled ||
+        !window.google?.accounts?.id ||
+        !googleButtonRef.current
+      ) {
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          if (!response?.credential) return;
+
+          setMessage("");
+          setIsSubmitting(true);
+          try {
+            const data = await fetchJson("/auth/google", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idToken: response.credential }),
+            });
+
+            localStorage.setItem("token", data.token);
+            const doctorName = data?.doctor?.name || "";
+            if (doctorName) {
+              localStorage.setItem("doctorName", doctorName);
+            }
+            navigate("/dashboard");
+          } catch (error) {
+            setMessage(error.message || "Google login failed");
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+      });
+
+      googleButtonRef.current.innerHTML = "";
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        shape: "pill",
+        text: "continue_with",
+        width: 360,
+      });
+      setGoogleReady(true);
+    };
+
+    const existingScript = document.getElementById(scriptId);
+    if (existingScript) {
+      if (window.google?.accounts?.id) {
+        initializeGoogle();
+      } else {
+        existingScript.addEventListener("load", initializeGoogle, { once: true });
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeGoogle;
+    script.onerror = () => {
+      if (!cancelled) {
+        setGoogleReady(false);
+        setMessage("Unable to load Google login. Try again later.");
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    setMessage("");
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      setMessage("Please enter a valid email address");
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       const data = await fetchJson("/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       localStorage.setItem("token", data.token);
@@ -29,73 +142,154 @@ function LoginForm() {
       navigate("/dashboard");
     } catch (error) {
       setMessage(error.message || "Server error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full max-w-md rounded-3xl bg-neutral-900/80 backdrop-blur-xl border border-neutral-800 p-8 shadow-2xl"
-    >
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-white tracking-tight">
-          Welcome Back
-        </h1>
-        <p className="text-sm text-neutral-400 mt-2">
-          Continue your holistic health journey
+  if (GOOGLE_ONLY_LOGIN && isGoogleLoginEnabled) {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Sign in securely with Google to continue to your dashboard.
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs uppercase tracking-[0.14em] text-slate-400">sign in</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="flex justify-center">
+            <div ref={googleButtonRef} />
+          </div>
+          {!googleReady && (
+            <p className="text-center text-xs text-slate-500">
+              Loading Google sign-in...
+            </p>
+          )}
+        </div>
+
+        {message && (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {message}
+          </p>
+        )}
+
+        <p className="pt-1 text-center text-sm text-slate-500">
+          Don&apos;t have an account?{" "}
+          <Link to="/signup" className="font-semibold text-slate-900 hover:text-emerald-700">
+            Sign up for free
+          </Link>
         </p>
       </div>
+    );
+  }
 
-      <div className="mb-5">
-        <label className="block text-sm text-neutral-300 mb-2">
-          Email address
-        </label>
-        <input
-          type="email"
-          placeholder="you@example.com"
-          className="w-full rounded-xl bg-neutral-800 px-4 py-3 text-white placeholder-neutral-500
-          outline-none border border-neutral-700
-          focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
+  if (CLERK_AUTH_ENABLED && CLERK_PUBLISHABLE_KEY) {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Sign in securely with Clerk to continue to your dashboard.
+        </div>
+
+        <ClerkLoginAction
+          disabled={isSubmitting}
+          onSuccess={() => navigate("/dashboard")}
+          onError={(errorMessage) => setMessage(errorMessage)}
         />
+
+        {message && (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {message}
+          </p>
+        )}
+
+        <p className="pt-1 text-center text-sm text-slate-500">
+          Don&apos;t have an account?{" "}
+          <Link to="/signup" className="font-semibold text-slate-900 hover:text-emerald-700">
+            Sign up for free
+          </Link>
+        </p>
       </div>
+    );
+  }
 
-      <div className="mb-6">
-        <label className="block text-sm text-neutral-300 mb-2">
-          Password
-        </label>
-        <input
-          type="password"
-          placeholder="password"
-          className="w-full rounded-xl bg-neutral-800 px-4 py-3 text-white placeholder-neutral-500
-          outline-none border border-neutral-700
-          focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <AuthTextField
+        label="Email"
+        type="email"
+        placeholder="doctor@ayudiet.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        autoComplete="email"
+      />
+
+      <AuthTextField
+        label="Password"
+        type={showPassword ? "text" : "password"}
+        placeholder="Enter your password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        autoComplete="current-password"
+        rightSlot={
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            className="text-slate-400 transition hover:text-slate-600"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        }
+      />
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="text-sm font-medium text-slate-500 transition hover:text-emerald-700"
+        >
+          Forgot Password?
+        </button>
       </div>
 
       <button
         type="submit"
-        className="w-full rounded-xl bg-gradient-to-r from-green-600 to-emerald-500
-        py-3 text-white font-medium tracking-wide
-        hover:from-green-500 hover:to-emerald-400
-        active:scale-[0.98] transition-all"
+        disabled={isSubmitting}
+        className="w-full rounded-2xl bg-[#111111] py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[#1d1d1d] active:scale-[0.99]"
       >
-        Log In
+        {isSubmitting ? "Logging in..." : "Login"}
       </button>
 
-      {message && (
-        <p className="text-red-400 text-sm mt-5 text-center">{message}</p>
+      {GOOGLE_AUTH_ENABLED && GOOGLE_CLIENT_ID && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs uppercase tracking-[0.14em] text-slate-400">or</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="flex justify-center">
+            <div ref={googleButtonRef} />
+          </div>
+          {!googleReady && (
+            <p className="text-center text-xs text-slate-500">
+              Loading Google sign-in...
+            </p>
+          )}
+        </div>
       )}
 
-      <p className="mt-5 text-center text-sm text-neutral-400">
-        Don't have an account?{" "}
-        <Link to="/signup" className="text-emerald-400 hover:text-emerald-300">
-          Sign up
+      {message && (
+        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {message}
+        </p>
+      )}
+
+      <p className="pt-1 text-center text-sm text-slate-500">
+        Don&apos;t have an account?{" "}
+        <Link to="/signup" className="font-semibold text-slate-900 hover:text-emerald-700">
+          Sign up for free
         </Link>
       </p>
     </form>

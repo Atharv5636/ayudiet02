@@ -7,6 +7,21 @@ const toNumericAdherence = (value) => {
 const average = (values = []) =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
+const cleanMealText = (value = "") =>
+  String(value)
+    .replace(/\s*\+\s*(more variety|optional add-ons)\s*$/i, "")
+    .replace(/\s*\((simplified prep|fixed portions|easy digestion)\)\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const simplifyMealText = (value = "") =>
+  cleanMealText(value)
+    .split(/[,+/&]| and /i)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 1)
+    .join(", ");
+
 export const analyzeProgress = (logs) => {
   if (!logs || logs.length < 3) {
     return { trend: "stable", confidence: 0.3 };
@@ -99,14 +114,15 @@ export const adjustPlanByTrend = (plan, trend) => {
   const updated = { ...plan };
 
   if (trend === "declining") {
-    updated.breakfast = `${plan.breakfast} (simplified prep)`;
-    updated.lunch = `${plan.lunch} (fixed portions)`;
-    updated.dinner = `${plan.dinner} (easy digestion)`;
+    updated.breakfast = simplifyMealText(plan.breakfast) || cleanMealText(plan.breakfast);
+    updated.lunch = simplifyMealText(plan.lunch) || cleanMealText(plan.lunch);
+    updated.dinner = simplifyMealText(plan.dinner) || cleanMealText(plan.dinner);
   }
 
   if (trend === "improving") {
-    updated.lunch += " + more variety";
-    updated.dinner += " + optional add-ons";
+    updated.breakfast = cleanMealText(plan.breakfast);
+    updated.lunch = cleanMealText(plan.lunch);
+    updated.dinner = cleanMealText(plan.dinner);
   }
 
   return updated;

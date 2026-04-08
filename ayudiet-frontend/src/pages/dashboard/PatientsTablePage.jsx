@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus, TriangleAlert } from "lucide-react";
 import { useOutletContext } from "react-router-dom";
 
 import PatientsTable from "../../components/dashboard/PatientsTable";
+import BackNavLink from "../../components/common/BackNavLink";
 import { deletePatient } from "../../services/patient.service";
 import { fetchPlansByPatient } from "../../services/plan.service";
 import { fetchJson } from "../../services/api";
@@ -139,7 +140,7 @@ function PatientsTablePage() {
     dashboardIntelligence: getPatientIntelligence(patient),
   }));
 
-  const loadActivePlans = async (patientList = patients) => {
+  const loadActivePlans = useCallback(async (patientList = []) => {
     try {
       const activePlansByPatient = await Promise.all(
         patientList.map(async (patient) => {
@@ -154,7 +155,7 @@ function PatientsTablePage() {
       console.error(error);
       setActivePlans([]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const loadPatientsTableData = async () => {
@@ -170,13 +171,13 @@ function PatientsTablePage() {
 
         await loadActivePlans(loadedPatients);
       } catch (error) {
-        setMessage(error.message || "Error fetching patient intelligence data");
+        setMessage(error.message || "Unable to load patient intelligence data.");
         console.error("Failed to fetch patient intelligence data", error);
       }
     };
 
     loadPatientsTableData();
-  }, []);
+  }, [loadActivePlans]);
 
   const handleDeletePatient = async (patientId) => {
     if (!window.confirm("Are you sure?")) return;
@@ -194,13 +195,14 @@ function PatientsTablePage() {
         })
       );
     } catch {
-      alert("Failed to delete patient");
+      alert("Unable to delete the patient. Please try again.");
     }
   };
 
   return (
     <div className="min-h-screen text-gray-900">
       <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 space-y-4">
+        <BackNavLink to="/dashboard" label="Back to Dashboard" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Patients Table</h1>

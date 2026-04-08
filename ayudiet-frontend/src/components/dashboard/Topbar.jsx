@@ -3,31 +3,88 @@ import { Menu, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { fetchJson } from "../../services/api";
 
+function getDoctorNameFromToken(token) {
+  try {
+    if (!token) return "";
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return "";
+
+    const normalizedPayload = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      "="
+    );
+    const payload = JSON.parse(atob(paddedPayload));
+    return payload?.name?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+function formatDoctorGreeting(name) {
+  const trimmedName = name?.trim();
+  if (!trimmedName) return "Welcome back, Doctor";
+
+  if (/^dr\.?\s/i.test(trimmedName)) {
+    return `Welcome back, ${trimmedName}`;
+  }
+
+  return `Welcome back, Dr. ${trimmedName}`;
+}
+
 function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [hasLoadedPatients, setHasLoadedPatients] = useState(false);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const [doctorName, setDoctorName] = useState(() => {
+    const storedName = localStorage.getItem("doctorName")?.trim();
+    if (storedName) return storedName;
+
+    const token = localStorage.getItem("token");
+    const tokenName = getDoctorNameFromToken(token);
+    if (tokenName) {
+      localStorage.setItem("doctorName", tokenName);
+      return tokenName;
+    }
+
+    return "";
+  });
 
   useEffect(() => {
-    const loadPatients = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
+    const token = localStorage.getItem("token");
+    const tokenName = getDoctorNameFromToken(token);
 
-        const response = await fetchJson("/patients", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        setPatients(Array.isArray(response?.patients) ? response.patients : []);
-      } catch (error) {
-        console.error("Failed to load patients for top search:", error);
-      }
-    };
-
-    loadPatients();
+    if (tokenName) {
+      setDoctorName(tokenName);
+      localStorage.setItem("doctorName", tokenName);
+    }
   }, []);
+
+  const ensurePatientsLoaded = async () => {
+    if (hasLoadedPatients || isLoadingPatients) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setIsLoadingPatients(true);
+
+    try {
+      const response = await fetchJson("/patients", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      setPatients(Array.isArray(response?.patients) ? response.patients : []);
+      setHasLoadedPatients(true);
+    } catch (error) {
+      console.error("Failed to load patients for top search:", error);
+    } finally {
+      setIsLoadingPatients(false);
+    }
+  };
 
   const filteredPatients = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -80,7 +137,9 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
           {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
 
-          <h1 className="hidden text-sm text-gray-600 sm:block">Welcome back, Doctor</h1>
+          <h1 className="hidden text-sm text-gray-600 sm:block">
+            {formatDoctorGreeting(doctorName)}
+          </h1>
         </div>
 
         {/* CENTER: SEARCH */}
@@ -90,6 +149,7 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
           placeholder="Search patients..."
           value={search}
           onChange={(e) => {
+            ensurePatientsLoaded();
             setSearch(e.target.value);
             setShowResults(true);
           }}
@@ -99,7 +159,10 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
               openSearchResult();
             }
           }}
-          onFocus={() => setShowResults(true)}
+          onFocus={() => {
+            ensurePatientsLoaded();
+            setShowResults(true);
+          }}
           onBlur={() => {
             window.setTimeout(() => setShowResults(false), 120);
           }}
@@ -125,7 +188,7 @@ function Topbar({ search, setSearch, isSidebarOpen, onToggleSidebar }) {
                 </button>
               ))
             ) : (
-              <p className="px-3 py-2 text-sm text-gray-500">No patients found</p>
+              <p className="px-3 py-2 text-sm text-gray-500">No patients were found.</p>
             )}
           </div>
         )}

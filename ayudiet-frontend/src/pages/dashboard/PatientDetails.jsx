@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchJson } from "../../services/api";
 import {
   createProgressLog,
@@ -10,6 +10,7 @@ import {
   explainPlanFromBackend,
   fetchPlansByPatient,
   generatePlanFromBackend,
+  generatePersonalizedMeals,
   updatePlan,
 } from "../../services/plan.service";
 import usePlansStore from "../../store/plansStore";
@@ -21,6 +22,7 @@ import {
 } from "@/utils/dietPlanEngine";
 import { adjustPlanByTrend, analyzeProgress } from "@/utils/progressionEngine";
 import { generateProgressExplanation } from "@/utils/explainEngine";
+import { autoImprovePlan } from "@/utils/autoImprovePlanEngine";
 
 const createMealDay = (index) => ({
   day: `Day ${index + 1}`,
@@ -39,8 +41,75 @@ const average = (values = []) =>
     ? values.reduce((total, value) => total + value, 0) / values.length
     : null;
 
+const getLogTimestamp = (log) => log?.recordedAt || log?.createdAt || null;
+const getObjectIdTimestamp = (id) => {
+  if (typeof id !== "string" || id.length < 8) return 0;
+  const seconds = Number.parseInt(id.slice(0, 8), 16);
+  if (Number.isNaN(seconds)) return 0;
+  return seconds * 1000;
+};
+
+const getCurrentDateTimeLocal = () => {
+  const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
+const toDateTimeLocalValue = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? `${value}T09:00` : "";
+  }
+  const timezoneOffset = parsed.getTimezoneOffset() * 60000;
+  return new Date(parsed.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
+const toIsoDateTimeValue = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString();
+};
+const formatDateDayMonthYear = (value) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+};
+const formatDateTimeDayMonthYear = (value) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(parsed);
+};
+const resolvePatientPhotoUrl = (patient = {}) => {
+  const raw = String(patient?.photo?.url || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const base = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/g, "");
+  if (!base) return raw;
+  return `${base}${raw.startsWith("/") ? raw : `/${raw}`}`;
+};
+const getPatientInitials = (name = "") => {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "PT";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("");
+};
+
 const LOW_ADHERENCE_SCORE = 30;
 const HIGH_ADHERENCE_SCORE = 100;
+const getPlanDraftStorageKey = (patientId) => `dietPlanDraft:${patientId}`;
 
 const normalizeAdherenceValue = (value) => {
   if (typeof value === "number" && !Number.isNaN(value)) {
@@ -54,18 +123,115 @@ const normalizeAdherenceValue = (value) => {
   return null;
 };
 
+const sanitizeGeneratedMealText = (value = "") =>
+  String(value)
+    .replace(/\s*\+\s*(more variety|optional add-ons)\s*$/i, "")
+    .replace(/\s*\((simplified prep|fixed portions|easy digestion)\)\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+const hasPortionHint = (value = "") => /\bportion\s*:/i.test(String(value));
+
+const buildAiPatientContext = (patient = {}, goal = "", dosha = "", progressLogs = []) => {
+  const orderedLogs = Array.isArray(progressLogs)
+    ? [...progressLogs].sort(
+        (left, right) =>
+          new Date(getLogTimestamp(right) || 0).getTime() -
+          new Date(getLogTimestamp(left) || 0).getTime()
+      )
+    : [];
+  const latestLog = orderedLogs[0] || null;
+
+  return {
+    goal: goal || patient?.planningInputs?.primaryGoal || "",
+    preferredDosha: dosha || patient?.prakriti?.dominantDosha || "",
+    patientContext: {
+      age: patient?.age ?? null,
+      gender: patient?.gender || "",
+      heightCm: patient?.height ?? null,
+      weightKg: patient?.weight ?? null,
+      healthConditions: patient?.healthConditions || "",
+      currentMedications: patient?.currentMedications || "",
+      allergies: patient?.allergies || "",
+      dietType: patient?.dietType || "",
+      activityLevel: patient?.activityLevel || "",
+      preferences: Array.isArray(patient?.preferences) ? patient.preferences : [],
+      planningInputs: patient?.planningInputs || {},
+    },
+    progressContext: {
+      totalLogs: orderedLogs.length,
+      latest: latestLog
+        ? {
+            recordedAt: getLogTimestamp(latestLog),
+            weight: latestLog.weight ?? null,
+            energyLevel: latestLog.energyLevel ?? null,
+            digestion: latestLog.digestion || "",
+            symptomScore: latestLog.symptomScore ?? null,
+            adherence: normalizeAdherenceValue(latestLog.adherence),
+            sleepHours: latestLog.sleepHours ?? null,
+            waterIntakeLiters: latestLog.waterIntakeLiters ?? null,
+            activityMinutes: latestLog.activityMinutes ?? null,
+            stressLevel: latestLog.stressLevel ?? null,
+          }
+        : null,
+      recent: orderedLogs.slice(0, 5).map((log) => ({
+        recordedAt: getLogTimestamp(log),
+        weight: log.weight ?? null,
+        energyLevel: log.energyLevel ?? null,
+        digestion: log.digestion || "",
+        symptomScore: log.symptomScore ?? null,
+        adherence: normalizeAdherenceValue(log.adherence),
+      })),
+    },
+    constraints: {
+      avoidUnknownIngredients: true,
+      requireRecognizableMealNames: true,
+    },
+  };
+};
+
+const normalizeGoalValue = (value = "") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("diabetes") || normalized.includes("blood sugar")) {
+    return "diabetes support";
+  }
+  if (normalized.includes("pcos")) return "pcos support";
+  if (normalized.includes("thyroid")) return "thyroid support";
+  if (
+    normalized.includes("hypertension") ||
+    normalized.includes("blood pressure")
+  ) {
+    return "hypertension support";
+  }
+  if (normalized.includes("weight") && normalized.includes("loss")) return "weight loss";
+  if (normalized.includes("muscle") && normalized.includes("gain")) return "muscle gain";
+  if (normalized.includes("digest")) return "better digestion";
+  return "general wellness";
+};
+
+const getDefaultReviewDateTime = () => {
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const timezoneOffset = nextWeek.getTimezoneOffset() * 60000;
+  return new Date(nextWeek.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
+
+
 function PatientDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [patient, setPatient] = useState(null);
   const [patientLoading, setPatientLoading] = useState(true);
   const [plansLoading, setPlansLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
+  const [isTitleManuallyEdited, setIsTitleManuallyEdited] = useState(false);
   const [goal, setGoal] = useState("");
   const [dosha, setDosha] = useState("");
   const [date, setDate] = useState("");
-  const [days, setDays] = useState(createInitialMealDays());
+  const [manualDays, setManualDays] = useState(createInitialMealDays());
+  const [aiDays, setAiDays] = useState(createInitialMealDays());
   const [builderMode, setBuilderMode] = useState("manual");
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [expandedPlanId, setExpandedPlanId] = useState(null);
@@ -90,9 +256,26 @@ function PatientDetails() {
   const [progressForm, setProgressForm] = useState({
     weight: patient?.weight || "",
     energyLevel: "3",
+    symptomScore: "5",
     digestion: "good",
-    adherence: false,
+    digestionDetail: "normal",
+    adherence: "75",
+    sleepHours:
+      typeof patient?.planningInputs?.sleepHours === "number"
+        ? String(patient.planningInputs.sleepHours)
+        : "",
+    waterIntakeLiters:
+      typeof patient?.planningInputs?.waterIntakeLiters === "number"
+        ? String(patient.planningInputs.waterIntakeLiters)
+        : "",
+    appetite: "normal",
+    activityMinutes: "",
+    stressLevel:
+      typeof patient?.planningInputs?.stressLevel === "number"
+        ? String(patient.planningInputs.stressLevel)
+        : "3",
     notes: "",
+    recordedAt: getCurrentDateTimeLocal(),
   });
   const [toast, setToast] = useState("");
   const [progressPage, setProgressPage] = useState(1);
@@ -100,17 +283,129 @@ function PatientDetails() {
   const PROGRESS_LOGS_PER_PAGE = 2;
   const PLAN_HISTORY_PER_PAGE = 4;
 
+  const activeDays = builderMode === "ai" ? aiDays : manualDays;
+  const setActiveDays = useCallback(
+    (updater) => {
+      if (builderMode === "ai") {
+        setAiDays(updater);
+        return;
+      }
+      setManualDays(updater);
+    },
+    [builderMode]
+  );
+  const getDefaultPlanFormValues = useCallback(() => {
+    const defaultGoal = normalizeGoalValue(
+      patient?.planningInputs?.primaryGoal || goal
+    );
+    const defaultDosha = String(
+      patient?.prakriti?.dominantDosha || patient?.doshaType || dosha || ""
+    )
+      .trim()
+      .toLowerCase();
+    const safeDosha = ["vata", "pitta", "kapha"].includes(defaultDosha)
+      ? defaultDosha
+      : "";
+    const defaultTitle = patient?.name
+      ? `${patient.name} ${defaultGoal ? `- ${defaultGoal}` : ""} Plan`
+      : "Diet Plan";
+
+    return {
+      title: defaultTitle.trim(),
+      goal: defaultGoal,
+      dosha: safeDosha,
+      date: getDefaultReviewDateTime(),
+    };
+  }, [patient, goal, dosha]);
+  const buildPortionHintForSlot = useCallback(
+    (slotKey, mealText = "") => {
+      const goalText = String(goal || "").toLowerCase();
+      const conditionText = String(patient?.healthConditions || "").toLowerCase();
+      const mealTextNormalized = String(mealText || "").toLowerCase();
+      const isWeightLoss = goalText.includes("weight loss");
+      const isMuscleGain =
+        goalText.includes("muscle") || goalText.includes("weight gain");
+      const isRotiStyleDish = /(roti|chapati|phulka|paratha|thepla|wrap)/.test(
+        mealTextNormalized
+      );
+      const isGrainBowlDish =
+        /(khichdi|rice|pulao|daliya|quinoa|oats|porridge|upma|poha|millet)/.test(
+          mealTextNormalized
+        );
+      const isSoupSaladDish = /(soup|salad|broth|stew)/.test(mealTextNormalized);
+
+      const baseBySlot = {
+        breakfast: isMuscleGain
+          ? "Portion: 1.5 bowls"
+          : isWeightLoss
+            ? "Portion: 1 bowl"
+            : "Portion: 1-1.25 bowls",
+        lunch: isRotiStyleDish
+          ? isMuscleGain
+            ? "Portion: 2-3 rotis + 1 cup sabzi/dal"
+            : isWeightLoss
+              ? "Portion: 1-1.5 rotis + 1 cup sabzi"
+              : "Portion: 1-2 rotis + 1 cup sabzi/dal"
+          : isGrainBowlDish
+            ? isMuscleGain
+              ? "Portion: 1.5 cups cooked grains/khichdi"
+              : isWeightLoss
+                ? "Portion: 0.75-1 cup cooked grains/khichdi"
+                : "Portion: 1-1.25 cups cooked grains/khichdi"
+            : isSoupSaladDish
+              ? isMuscleGain
+                ? "Portion: 1.5 bowls + protein side"
+                : isWeightLoss
+                  ? "Portion: 1 bowl + protein side"
+                  : "Portion: 1-1.25 bowls + protein side"
+              : isMuscleGain
+                ? "Portion: 1.5 bowls or 2 rotis"
+                : isWeightLoss
+                  ? "Portion: 1 bowl or 1 roti"
+                  : "Portion: 1-1.25 bowls or 1-2 rotis",
+        dinner: isMuscleGain
+          ? "Portion: 1.5 bowls + protein side"
+          : isWeightLoss
+            ? "Portion: 1 bowl (light)"
+            : "Portion: 1-1.25 bowls",
+      };
+
+      const qualifiers = [];
+      if (conditionText.includes("diabet")) qualifiers.push("low glycemic carbs");
+      if (conditionText.includes("blood pressure")) qualifiers.push("very low salt");
+      if (conditionText.includes("digest")) qualifiers.push("easy-to-digest prep");
+
+      const suffix = qualifiers.length ? `; ${qualifiers.join(", ")}` : "";
+      return `${baseBySlot[slotKey] || "Portion: moderate serving"}${suffix}`;
+    },
+    [goal, patient?.healthConditions]
+  );
+  const ensureMealHasPortion = useCallback(
+    (slotKey, mealText) => {
+      const cleaned = sanitizeGeneratedMealText(mealText || "");
+      if (!cleaned) return cleaned;
+      if (hasPortionHint(cleaned)) return cleaned;
+      return `${cleaned} | ${buildPortionHintForSlot(slotKey, cleaned)}`;
+    },
+    [buildPortionHintForSlot]
+  );
+
   const plans = usePlansStore((state) => state.patientPlans[id]);
   const setPatientPlans = usePlansStore((state) => state.setPatientPlans);
   const upsertPatientPlan = usePlansStore((state) => state.upsertPatientPlan);
 
-  const visiblePlans = plans || [];
+  const visiblePlans = useMemo(() => plans || [], [plans]);
   const activePlan = visiblePlans.find((plan) => plan.isActive) || null;
   const loading = patientLoading || plansLoading;
   const builderValidation = useMemo(
-    () => validatePlan(days, dosha),
-    [days, dosha]
+    () => validatePlan(activeDays, dosha),
+    [activeDays, dosha]
   );
+  const hasRequiredPlanContext = Boolean(
+    title.trim() && goal && dosha && date
+  );
+  const requiredPlanContextMessage =
+    "Please fill plan title, goal, dosha, and review date first.";
   const progressTrendSummary = useMemo(() => {
     if (!progressLogs.length) {
       return {
@@ -122,7 +417,8 @@ function PatientDetails() {
 
     const orderedLogs = [...progressLogs].sort(
       (left, right) =>
-        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        new Date(getLogTimestamp(left) || 0).getTime() -
+        new Date(getLogTimestamp(right) || 0).getTime()
     );
 
     const weightLogs = orderedLogs.filter((log) => typeof log.weight === "number");
@@ -244,41 +540,76 @@ function PatientDetails() {
     historicalPlans.length
   );
 
+  const persistPlanDraft = useCallback(
+    (nextDraft = {}) => {
+      try {
+        sessionStorage.setItem(
+          getPlanDraftStorageKey(id),
+          JSON.stringify({
+            showForm,
+            editingPlanId,
+            title,
+            goal,
+            dosha,
+            date,
+            manualDays,
+            aiDays,
+            builderMode,
+            selectedDayIndex,
+            ...nextDraft,
+          })
+        );
+      } catch (error) {
+        console.error("Failed to persist plan draft", error);
+      }
+    },
+    [id, showForm, editingPlanId, title, goal, dosha, date, manualDays, aiDays, builderMode, selectedDayIndex]
+  );
+
   const resetBuilder = () => {
+    const defaults = getDefaultPlanFormValues();
     setShowForm(false);
     setEditingPlanId(null);
-    setTitle("");
-    setGoal("");
-    setDosha("");
-    setDate("");
-    setDays(createInitialMealDays());
+    setTitle(defaults.title);
+    setIsTitleManuallyEdited(false);
+    setGoal(defaults.goal);
+    setDosha(defaults.dosha);
+    setDate(defaults.date);
+    setManualDays(createInitialMealDays());
+    setAiDays(createInitialMealDays());
     setBuilderMode("manual");
     setSelectedDayIndex(0);
     setAutoFixChanges([]);
     setLastGeneratedContext(null);
     setLastProgressInsights([]);
+    try {
+      sessionStorage.removeItem(getPlanDraftStorageKey(id));
+    } catch (error) {
+      console.error("Failed to clear plan draft", error);
+    }
   };
 
   const startEditingPlan = (plan) => {
     setShowForm(true);
     setEditingPlanId(plan._id);
     setTitle(plan.title || "");
+    setIsTitleManuallyEdited(true);
     setDosha(plan.doshaType || "");
     setDate(
       plan.reviewDueDate
-        ? new Date(plan.reviewDueDate).toISOString().slice(0, 10)
+        ? toDateTimeLocalValue(plan.reviewDueDate)
         : ""
     );
-    setDays(
-      plan.meals?.length
-        ? plan.meals.map((meal, index) => ({
-            day: meal.day || `Day ${index + 1}`,
-            breakfast: meal.breakfast || "",
-            lunch: meal.lunch || "",
-            dinner: meal.dinner || "",
-          }))
-        : createInitialMealDays()
-    );
+    const planDays = plan.meals?.length
+      ? plan.meals.map((meal, index) => ({
+          day: meal.day || `Day ${index + 1}`,
+          breakfast: meal.breakfast || "",
+          lunch: meal.lunch || "",
+          dinner: meal.dinner || "",
+        }))
+      : createInitialMealDays();
+    setManualDays(planDays);
+    setAiDays(createInitialMealDays(planDays.length || DEFAULT_PLAN_DAYS));
     setBuilderMode("manual");
     setSelectedDayIndex(0);
     setAutoFixChanges([]);
@@ -288,7 +619,7 @@ function PatientDetails() {
 
   const updateDayField = (index, field, value) => {
     setAutoFixChanges([]);
-    setDays((currentDays) =>
+    setActiveDays((currentDays) =>
       currentDays.map((day, dayIndex) =>
         dayIndex === index ? { ...day, [field]: value } : day
       )
@@ -300,7 +631,7 @@ function PatientDetails() {
       return;
     }
 
-    setDays((currentDays) => {
+    setAiDays((currentDays) => {
       const nextDays = Array.isArray(currentDays) && currentDays.length
         ? [...currentDays]
         : createInitialMealDays();
@@ -310,18 +641,18 @@ function PatientDetails() {
           const meal = dietPlan[index] || dietPlan[dietPlan.length - 1] || {};
           nextDays[index] = {
             ...nextDays[index],
-            breakfast: meal.breakfast || "",
-            lunch: meal.lunch || "",
-            dinner: meal.dinner || "",
+            breakfast: ensureMealHasPortion("breakfast", meal.breakfast || ""),
+            lunch: ensureMealHasPortion("lunch", meal.lunch || ""),
+            dinner: ensureMealHasPortion("dinner", meal.dinner || ""),
           };
         }
       } else {
         for (let index = 0; index < nextDays.length; index += 1) {
           nextDays[index] = {
             ...nextDays[index],
-            breakfast: dietPlan.breakfast || "",
-            lunch: dietPlan.lunch || "",
-            dinner: dietPlan.dinner || "",
+            breakfast: ensureMealHasPortion("breakfast", dietPlan.breakfast || ""),
+            lunch: ensureMealHasPortion("lunch", dietPlan.lunch || ""),
+            dinner: ensureMealHasPortion("dinner", dietPlan.dinner || ""),
           };
         }
       }
@@ -333,22 +664,34 @@ function PatientDetails() {
   const addDay = () => {
     setAutoFixChanges([]);
     setBuilderMode("manual");
-    setDays((currentDays) => [...currentDays, createMealDay(currentDays.length)]);
+    setManualDays((currentDays) => [...currentDays, createMealDay(currentDays.length)]);
   };
 
   const removeDay = (index) => {
     setAutoFixChanges([]);
-    setDays((currentDays) => {
+    setActiveDays((currentDays) => {
       if (currentDays.length === 1) {
         return currentDays;
       }
 
-      return currentDays
+      const nextDays = currentDays
         .filter((_, dayIndex) => dayIndex !== index)
         .map((day, dayIndex) => ({
           ...day,
           day: `Day ${dayIndex + 1}`,
         }));
+
+      setSelectedDayIndex((currentIndex) => {
+        if (currentIndex > index) {
+          return currentIndex - 1;
+        }
+        if (currentIndex === index) {
+          return Math.max(index - 1, 0);
+        }
+        return currentIndex;
+      });
+
+      return nextDays;
     });
   };
 
@@ -361,7 +704,14 @@ function PatientDetails() {
     try {
       setProgressLoading(true);
       const logs = await fetchProgressLogs(id);
-      const normalizedLogs = Array.isArray(logs) ? logs : [];
+      const normalizedLogs = Array.isArray(logs)
+        ? [...logs].sort(
+            (left, right) =>
+              getObjectIdTimestamp(right?._id) - getObjectIdTimestamp(left?._id) ||
+              new Date(right?.createdAt || getLogTimestamp(right) || 0).getTime() -
+                new Date(left?.createdAt || getLogTimestamp(left) || 0).getTime()
+          )
+        : [];
       console.log("Logs:", normalizedLogs);
       setProgressLogs(normalizedLogs);
     } catch (error) {
@@ -392,9 +742,71 @@ function PatientDetails() {
 
   useEffect(() => {
     setSelectedDayIndex((currentIndex) =>
-      Math.min(currentIndex, Math.max(days.length - 1, 0))
+      Math.min(currentIndex, Math.max(activeDays.length - 1, 0))
     );
-  }, [days.length]);
+  }, [activeDays.length]);
+
+  useEffect(() => {
+    try {
+      const rawDraft = sessionStorage.getItem(getPlanDraftStorageKey(id));
+      if (!rawDraft) return;
+
+      const draft = JSON.parse(rawDraft);
+      if (!draft?.showForm) return;
+
+      setShowForm(Boolean(draft.showForm));
+      setEditingPlanId(draft.editingPlanId || null);
+      setTitle(draft.title || "");
+      setIsTitleManuallyEdited(Boolean((draft.title || "").trim()));
+      setGoal(draft.goal || "");
+      setDosha(draft.dosha || "");
+      setDate(toDateTimeLocalValue(draft.date) || "");
+      const restoredManualDays = Array.isArray(draft.manualDays) && draft.manualDays.length
+        ? draft.manualDays
+        : Array.isArray(draft.days) && draft.days.length
+          ? draft.days
+          : createInitialMealDays();
+      const restoredAiDays = Array.isArray(draft.aiDays) && draft.aiDays.length
+        ? draft.aiDays
+        : createInitialMealDays(restoredManualDays.length || DEFAULT_PLAN_DAYS);
+      setManualDays(restoredManualDays);
+      setAiDays(restoredAiDays);
+      setBuilderMode(draft.builderMode || "manual");
+      setSelectedDayIndex(typeof draft.selectedDayIndex === "number" ? draft.selectedDayIndex : 0);
+    } catch (error) {
+      console.error("Failed to restore plan draft", error);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    persistPlanDraft();
+  }, [showForm, editingPlanId, title, goal, dosha, date, manualDays, aiDays, builderMode, selectedDayIndex, persistPlanDraft]);
+
+  useEffect(() => {
+    if (!showForm || editingPlanId) {
+      return;
+    }
+
+    const defaults = getDefaultPlanFormValues();
+    if (!isTitleManuallyEdited && !title.trim()) setTitle(defaults.title);
+    if (!goal) setGoal(defaults.goal);
+    if (!dosha) setDosha(defaults.dosha);
+    if (!date) setDate(defaults.date);
+  }, [showForm, editingPlanId, title, goal, dosha, date, isTitleManuallyEdited, getDefaultPlanFormValues]);
+
+  const openMealLibrary = (dayIndex, slotKey) => {
+    persistPlanDraft({
+      showForm: true,
+      selectedDayIndex: dayIndex,
+    });
+
+    navigate(
+      `/dashboard/patients/${id}/meal-library?day=${dayIndex}&slot=${slotKey}&goal=${encodeURIComponent(
+        goal
+      )}&dosha=${encodeURIComponent(dosha)}`
+    );
+  };
 
   const handleProgressFieldChange = (field, value) => {
     setProgressForm((current) => ({
@@ -404,6 +816,11 @@ function PatientDetails() {
   };
 
       const handleGeneratePlan = async (planInput = null) => {
+    if (!hasRequiredPlanContext) {
+      alert(requiredPlanContextMessage);
+      return;
+    }
+
     const symptoms =
       planInput?.primaryIssue || goal.trim() || patient?.healthConditions || "";
     if (!symptoms) {
@@ -412,23 +829,124 @@ function PatientDetails() {
     }
     try {
       setIsGeneratingAi(true);
-      const result = await generatePlanFromBackend({
+
+      // Preferred path: backend meal generation using patient record (more personalized).
+      try {
+        const mealsResponse = await generatePersonalizedMeals({
+          patientId: id,
+          goal: goal.trim(),
+          doshaType: dosha || "vata",
+        });
+
+        const meals = Array.isArray(mealsResponse?.meals)
+          ? mealsResponse.meals.map((meal, index) => ({
+              day: meal?.day || `Day ${index + 1}`,
+              breakfast: sanitizeGeneratedMealText(meal?.breakfast || ""),
+              lunch: sanitizeGeneratedMealText(meal?.lunch || ""),
+              dinner: sanitizeGeneratedMealText(meal?.dinner || ""),
+            }))
+          : null;
+
+        if (meals && meals.length) {
+          const generationSource = String(
+            mealsResponse?.generationSource || "unknown"
+          ).toLowerCase();
+          const usedFallback =
+            generationSource === "fallback_mock" || generationSource === "unknown";
+          const fallbackReason = mealsResponse?.generationFallbackReason
+            ? String(mealsResponse.generationFallbackReason)
+            : "none";
+          setAutoFixChanges([]);
+          applyGeneratedDietPlanToBuilder(meals);
+          setBuilderMode("ai");
+          setSelectedDayIndex(0);
+          setGeneratedDietPlan(meals[0]);
+          setIsGeneratedPlanLowConfidence(false);
+          setGeneratedPlanTrend("stable");
+          setGeneratedPlanTrendConfidence(0.8);
+          setGeneratedPlanReason({
+            summary: usedFallback
+              ? "Baseline personalized meals generated"
+              : "Personalized AI meals generated",
+            interpretation: usedFallback
+              ? "OpenAI response fallback was used; meals are still based on patient profile and progress context"
+              : "Meal plan generated using patient profile and recent progress",
+            actionReason: usedFallback
+              ? `Fallback reason: ${fallbackReason}`
+              : "Meals grounded to allowed Ayurvedic foods and patient constraints",
+          });
+          setLastGeneratedContext({
+            goal: String(
+              mealsResponse?.patientContext?.goal ||
+                goal.trim() ||
+                "Diet plan"
+            ).trim(),
+            doshaType: String(
+              mealsResponse?.patientContext?.doshaType ||
+                dosha ||
+                "vata"
+            ).trim(),
+            weight:
+              mealsResponse?.patientContext?.weight ||
+              patient?.weight ||
+              "-",
+          });
+          setLastProgressInsights([
+            ...(Array.isArray(mealsResponse?.progressInsights)
+              ? mealsResponse.progressInsights.slice(0, 3)
+              : []),
+            ...(Array.isArray(mealsResponse?.foods) && mealsResponse.foods.length
+              ? [`Foods grounded: ${mealsResponse.foods.length}`]
+              : []),
+            `Generation source: ${generationSource}`,
+            ...(usedFallback ? [`Fallback reason: ${fallbackReason}`] : []),
+          ]);
+          showToast(
+            usedFallback
+              ? `Generated using fallback mode (${fallbackReason}).`
+              : "Personalized AI meals generated."
+          );
+          return;
+        }
+      } catch (error) {
+        console.warn("Personalized meal generation failed, falling back:", error);
+      }
+
+      const aiRequestPayload = {
         symptoms,
+        preferredDosha: dosha || "vata",
+        ...buildAiPatientContext(patient, goal, dosha, progressLogs),
+      };
+      const result = await generatePlanFromBackend({
+        ...aiRequestPayload,
       });
       const profile = result || {};
       const confidence =
         typeof profile?.confidence === "number" ? profile.confidence : 0;
+      const useSafeBaseline = Boolean(profile?.fallback) || confidence < 0.45;
       const patientWithProgress = {
         ...patient,
         progressLogs,
       };
-      const baseDietPlan = buildWeeklyDietPlan(profile, days.length || DEFAULT_PLAN_DAYS);
+      const safeProfile = useSafeBaseline
+        ? {
+            primary_dosha: dosha || profile?.primary_dosha || "vata",
+            risk_flags: ["none"],
+          }
+        : profile;
+      const baseDietPlan = buildWeeklyDietPlan(
+        safeProfile,
+        aiDays.length || DEFAULT_PLAN_DAYS,
+        aiRequestPayload
+      );
       let dietPlan = baseDietPlan;
       const progression = analyzeProgress(patientWithProgress.progressLogs || []);
       const trend = progression?.trend || "stable";
       const trendConfidence =
         typeof progression?.confidence === "number" ? progression.confidence : 0.4;
-      dietPlan = adjustPlanByTrend(dietPlan, trend);
+      if (!useSafeBaseline) {
+        dietPlan = adjustPlanByTrend(dietPlan, trend);
+      }
       const reason = generateProgressExplanation(
         patientWithProgress.progressLogs || [],
         trend
@@ -440,11 +958,13 @@ function PatientDetails() {
         dietPlan,
       };
       const confidenceLabel =
-        confidence < 0.4 ? "Low confidence" : `Confidence: ${formatted.score}%`;
+        useSafeBaseline
+          ? "Low confidence or schema fallback: safe baseline plan applied"
+          : `Confidence: ${formatted.score}%`;
       setAutoFixChanges([]);
       setGeneratedDietPlan(
         Array.isArray(formatted.dietPlan)
-          ? formatted.dietPlan[0] || buildDietPlan(profile)
+          ? formatted.dietPlan[0] || buildDietPlan(profile, aiRequestPayload)
           : formatted.dietPlan
       );
       applyGeneratedDietPlanToBuilder(formatted.dietPlan);
@@ -472,14 +992,14 @@ function PatientDetails() {
         `Trend confidence: ${Math.round(trendConfidence * 100)}%`,
         confidenceLabel,
       ]);
-      if (confidence < 0.4) {
-        showToast("Low confidence result. Please review manually before approving.");
+      if (useSafeBaseline) {
+        showToast("Safe baseline plan generated (low-confidence AI response).");
       } else {
         showToast("Profile analysis generated successfully");
       }
     } catch (error) {
       console.error("Error generating profile analysis:", error);
-      alert(error.message || "Failed to generate profile analysis");
+      alert(error.message || "Unable to generate profile analysis.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -487,35 +1007,80 @@ function PatientDetails() {
   const handleGenerateWithAi = () => handleGeneratePlan();
 
   const applyDeterministicAutoImprove = (trend) => {
-    setDays((currentDays) => {
-      if (!Array.isArray(currentDays) || currentDays.length === 0) {
-        return currentDays;
-      }
+    if (!Array.isArray(activeDays) || activeDays.length === 0) {
+      return {
+        applied: false,
+        changes: [],
+        beforeScore: null,
+        afterScore: null,
+      };
+    }
 
-      const normalizedPlan = currentDays.map((day) => ({
-        breakfast: day?.breakfast || "",
-        lunch: day?.lunch || "",
-        dinner: day?.dinner || "",
-      }));
+    const normalizedPlan = activeDays.map((day) => ({
+      breakfast: day?.breakfast || "",
+      lunch: day?.lunch || "",
+      dinner: day?.dinner || "",
+    }));
+    const { improvedPlan, changes } = autoImprovePlan(normalizedPlan, {
+      trend,
+      dosha,
+    });
 
-      const improvedPlan = adjustPlanByTrend(normalizedPlan, trend);
-      if (!Array.isArray(improvedPlan)) {
-        return currentDays;
-      }
+    if (!Array.isArray(improvedPlan) || improvedPlan.length !== activeDays.length) {
+      return {
+        applied: false,
+        changes: [],
+        beforeScore: builderValidation?.score ?? null,
+        afterScore: null,
+      };
+    }
 
-      return currentDays.map((day, index) => ({
+    const beforeValidation = validatePlan(normalizedPlan, dosha);
+    const afterValidation = validatePlan(improvedPlan, dosha);
+    const beforeScore =
+      typeof beforeValidation?.score === "number" ? beforeValidation.score : null;
+    const afterScore =
+      typeof afterValidation?.score === "number" ? afterValidation.score : null;
+
+    if (
+      typeof beforeScore === "number" &&
+      typeof afterScore === "number" &&
+      afterScore < beforeScore
+    ) {
+      return {
+        applied: false,
+        changes: [],
+        beforeScore,
+        afterScore,
+      };
+    }
+
+    setActiveDays((currentDays) =>
+      currentDays.map((day, index) => ({
         ...day,
         breakfast: improvedPlan[index]?.breakfast ?? day.breakfast,
         lunch: improvedPlan[index]?.lunch ?? day.lunch,
         dinner: improvedPlan[index]?.dinner ?? day.dinner,
-      }));
-    });
+      }))
+    );
+
+    return {
+      applied: true,
+      changes: Array.isArray(changes) ? changes : [],
+      beforeScore,
+      afterScore,
+    };
   };
 
-  const dayEntries = days[selectedDayIndex]
-    ? [{ day: days[selectedDayIndex], index: selectedDayIndex }]
+  const dayEntries = activeDays[selectedDayIndex]
+    ? [{ day: activeDays[selectedDayIndex], index: selectedDayIndex }]
     : [];
   const handleAutoImprovePlan = async () => {
+    if (!hasRequiredPlanContext) {
+      alert(requiredPlanContextMessage);
+      return;
+    }
+
     const symptoms = goal.trim() || patient?.healthConditions || "";
     if (!symptoms) {
       alert("Enter goal or symptoms before explain");
@@ -524,16 +1089,36 @@ function PatientDetails() {
 
     try {
       setIsImprovingPlan(true);
-
-      const result = await explainPlanFromBackend({
-        symptoms,
-      });
       const progression = analyzeProgress(progressLogs || []);
       const trend = progression?.trend || "stable";
-      applyDeterministicAutoImprove(trend);
-      const explainChanges = [];
+      const autoImproveResult = applyDeterministicAutoImprove(trend);
+      const deterministicChanges = autoImproveResult.changes;
 
-      if (Array.isArray(result?.risk_flags) && result.risk_flags.length > 0) {
+      let result = null;
+      try {
+        result = await explainPlanFromBackend({
+          symptoms,
+          preferredDosha: dosha || "vata",
+          ...buildAiPatientContext(patient, goal, dosha, progressLogs),
+        });
+      } catch (explainError) {
+        console.warn("Explain backend unavailable during auto-improve:", explainError);
+      }
+
+      const explainChanges = autoImproveResult.applied
+        ? [
+            `Auto-improvement applied using deterministic rule engine (${trend})`,
+            ...deterministicChanges,
+          ]
+        : [
+            "Auto-improvement skipped because proposed changes reduced plan quality score.",
+            typeof autoImproveResult.beforeScore === "number" &&
+            typeof autoImproveResult.afterScore === "number"
+              ? `Score guard: ${autoImproveResult.beforeScore}/10 -> ${autoImproveResult.afterScore}/10 (blocked)`
+              : "Score guard: no safe improvement was found for this plan.",
+          ];
+
+      if (result && Array.isArray(result?.risk_flags) && result.risk_flags.length > 0) {
         explainChanges.push(`Risk Flags: ${result.risk_flags.join(", ")}`);
       }
       if (result?.primary_dosha) {
@@ -543,30 +1128,32 @@ function PatientDetails() {
         const confidencePercent = Math.round(result.confidence * 100);
         explainChanges.push(
           result.confidence < 0.4
-            ? "Low confidence result. Please review manually before approving."
-            : `Confidence: ${confidencePercent}%`
+            ? "Low confidence explain result. Review manually before approving."
+            : `Explain confidence: ${confidencePercent}%`
         );
       }
-      explainChanges.push(
-        `Auto-improvement applied using deterministic trend logic (${trend})`
-      );
 
       setAutoFixChanges(
         explainChanges.length > 0
-          ? explainChanges
-          : ["No explainability details were returned."]
+          ? [...new Set(explainChanges)]
+          : ["No auto-improvement changes were applied."]
       );
-      showToast("Explainability response loaded");
+      showToast(
+        autoImproveResult.applied
+          ? "Plan auto-improved successfully"
+          : "No safe auto-improvement found"
+      );
     } catch (error) {
       console.error("Error loading explainability response:", error);
-      alert(error.message || "Failed to load explainability response");
+      alert(error.message || "Unable to load explainability details.");
     } finally {
       setIsImprovingPlan(false);
     }
   };
 
   async function handleSubmitPlan() {
-    const normalizedDays = days.map((day, index) => ({
+    const reviewDueDateIso = toIsoDateTimeValue(date);
+    const normalizedDays = activeDays.map((day, index) => ({
       day: day.day.trim() || `Day ${index + 1}`,
       breakfast: day.breakfast.trim(),
       lunch: day.lunch.trim(),
@@ -577,7 +1164,7 @@ function PatientDetails() {
       (day) => !day.breakfast && !day.lunch && !day.dinner
     );
 
-    if (!title.trim() || !dosha || !date) {
+    if (!title.trim() || !dosha || !reviewDueDateIso) {
       alert("Title, dosha type, and review date are required");
       return;
     }
@@ -592,7 +1179,7 @@ function PatientDetails() {
         const updatedPlan = await updatePlan(editingPlanId, {
           title: title.trim(),
           doshaType: dosha,
-          reviewDueDate: date,
+          reviewDueDate: reviewDueDateIso,
           meals: normalizedDays,
         });
 
@@ -602,7 +1189,7 @@ function PatientDetails() {
           patient: id,
           title: title.trim(),
           doshaType: dosha,
-          reviewDueDate: date,
+          reviewDueDate: reviewDueDateIso,
           meals: normalizedDays,
         });
 
@@ -612,7 +1199,7 @@ function PatientDetails() {
       resetBuilder();
     } catch (error) {
       console.error("Error saving plan:", error);
-      alert(error.message || "Failed to save plan");
+      alert(error.message || "Unable to save the plan.");
     }
   }
 
@@ -636,23 +1223,48 @@ function PatientDetails() {
         weight: Number(progressForm.weight),
         energy: Number(progressForm.energyLevel),
         energyLevel: Number(progressForm.energyLevel),
+        symptomScore: Number(progressForm.symptomScore),
         digestion: progressForm.digestion,
-        adherence: progressForm.adherence ? 100 : 30,
+        digestionDetail: progressForm.digestionDetail,
+        adherence: Number(progressForm.adherence),
+        sleepHours: progressForm.sleepHours,
+        waterIntakeLiters: progressForm.waterIntakeLiters,
+        appetite: progressForm.appetite,
+        activityMinutes: progressForm.activityMinutes,
+        stressLevel: progressForm.stressLevel,
         notes: progressForm.notes,
+        recordedAt: progressForm.recordedAt,
       });
 
       await Promise.all([fetchProgress(), fetchPatientPlans()]);
       setProgressForm((current) => ({
         ...current,
         energyLevel: "3",
+        symptomScore: "5",
         digestion: "good",
-        adherence: false,
+        digestionDetail: "normal",
+        adherence: "75",
+        sleepHours:
+          typeof patient?.planningInputs?.sleepHours === "number"
+            ? String(patient.planningInputs.sleepHours)
+            : "",
+        waterIntakeLiters:
+          typeof patient?.planningInputs?.waterIntakeLiters === "number"
+            ? String(patient.planningInputs.waterIntakeLiters)
+            : "",
+        appetite: "normal",
+        activityMinutes: "",
+        stressLevel:
+          typeof patient?.planningInputs?.stressLevel === "number"
+            ? String(patient.planningInputs.stressLevel)
+            : "3",
         notes: "",
+        recordedAt: getCurrentDateTimeLocal(),
       }));
       showToast("Progress log saved");
     } catch (error) {
       console.error("Error saving progress log:", error);
-      alert(error.message || "Failed to save progress log");
+      alert(error.message || "Unable to save the progress log.");
     }
   };
 
@@ -734,14 +1346,27 @@ function PatientDetails() {
       )}
 
       <Link to="/dashboard" className="text-sm text-gray-700 hover:underline">
-        Back to Dashboard
+        {"<- Back to Dashboard"}
       </Link>
 
       <div className="space-y-8">
         <div className="rounded-2xl border border-gray-200 bg-white p-6  md:p-7">
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
-            {patient?.name}
-          </h1>
+          <div className="flex flex-wrap items-center gap-4">
+            {resolvePatientPhotoUrl(patient) ? (
+              <img
+                src={resolvePatientPhotoUrl(patient)}
+                alt={patient?.name || "Patient"}
+                className="h-16 w-16 rounded-full border border-gray-200 object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                {getPatientInitials(patient?.name)}
+              </div>
+            )}
+            <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
+              {patient?.name}
+            </h1>
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
               Target: {patient?.planningInputs?.primaryGoal || "-"}
@@ -791,38 +1416,39 @@ function PatientDetails() {
             )}
           </div>
 
-          {activePlan ? (
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-gray-200 bg-white p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {activePlan.title?.trim() || "Untitled Plan"}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      Dosha: {activePlan.doshaType || "-"} | Days:{" "}
-                      {Array.isArray(activePlan.meals) ? activePlan.meals.length : 0} | Review due:{" "}
-                      {new Date(activePlan.reviewDueDate).toLocaleDateString()}
-                    </p>
+          {!showForm &&
+            (activePlan ? (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {activePlan.title?.trim() || "Untitled Plan"}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Dosha: {activePlan.doshaType || "-"} | Days:{" "}
+                        {Array.isArray(activePlan.meals) ? activePlan.meals.length : 0} | Review due:{" "}
+                        {formatDateDayMonthYear(activePlan.reviewDueDate)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => startEditingPlan(activePlan)}
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition hover:bg-black hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                    >
+                      Edit Plan
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => startEditingPlan(activePlan)}
-                    className="text-sm font-medium text-gray-800 transition hover:text-black"
-                  >
-                    Edit Plan
-                  </button>
                 </div>
-              </div>
 
-              <MealsList meals={activePlan.meals} compact />
-              <PlanValidationCard
-                validation={validatePlan(activePlan.meals, activePlan.doshaType)}
-              />
-            </div>
-          ) : (
-            <p className="text-gray-600">No active plan</p>
-          )}
+                <MealsList meals={activePlan.meals} compact />
+                <PlanValidationCard
+                  validation={validatePlan(activePlan.meals, activePlan.doshaType)}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-600">No active plan</p>
+            ))}
 
           {showForm && (
             <div className="mt-4 space-y-6 rounded-2xl border border-gray-200 bg-white p-6 md:p-7">
@@ -842,7 +1468,10 @@ function PatientDetails() {
                   type="text"
                   placeholder="Plan Title"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setIsTitleManuallyEdited(true);
+                  }}
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 placeholder:text-gray-500 focus:border-gray-400 focus:outline-none"
                 />
 
@@ -854,6 +1483,10 @@ function PatientDetails() {
                   <option value="">Select Goal</option>
                   <option value="weight loss">Weight Loss</option>
                   <option value="muscle gain">Muscle Gain</option>
+                  <option value="diabetes support">Diabetes Support</option>
+                  <option value="pcos support">PCOS Support</option>
+                  <option value="thyroid support">Thyroid Support</option>
+                  <option value="hypertension support">Hypertension Support</option>
                   <option value="better digestion">Better Digestion</option>
                   <option value="general wellness">General Wellness</option>
                 </select>
@@ -869,12 +1502,17 @@ function PatientDetails() {
                   <option value="kapha">Kapha</option>
                 </select>
 
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
-                />
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray-500">
+                    Review Due Date
+                  </p>
+                  <input
+                    type="datetime-local"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -911,7 +1549,12 @@ function PatientDetails() {
                       <button
                         type="button"
                         onClick={handleGenerateWithAi}
-                        disabled={isGeneratingAi}
+                        disabled={isGeneratingAi || !hasRequiredPlanContext}
+                        title={
+                          !hasRequiredPlanContext
+                            ? requiredPlanContextMessage
+                            : undefined
+                        }
                         className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 transition hover:bg-black hover:text-white disabled:opacity-60"
                       >
                         {isGeneratingAi
@@ -921,7 +1564,12 @@ function PatientDetails() {
                       <button
                         type="button"
                         onClick={handleAutoImprovePlan}
-                        disabled={isImprovingPlan}
+                        disabled={isImprovingPlan || !hasRequiredPlanContext}
+                        title={
+                          !hasRequiredPlanContext
+                            ? requiredPlanContextMessage
+                            : undefined
+                        }
                         className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 transition hover:bg-black hover:text-white disabled:opacity-60"
                       >
                         {isImprovingPlan
@@ -938,13 +1586,18 @@ function PatientDetails() {
                       </button>
                     </div>
                   </div>
+                  {!hasRequiredPlanContext ? (
+                    <p className="text-xs text-gray-500">
+                      Fill title, goal, dosha, and review date to enable AI actions.
+                    </p>
+                  ) : null}
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <p className="mb-2 text-xs uppercase tracking-[0.15em] text-gray-500">
                       {builderMode === "ai" ? "Week Day Selector" : "Day Selector"}
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {days.map((day, index) => (
+                      {activeDays.map((day, index) => (
                         <button
                           key={`${day.day}-${index}-selector`}
                           type="button"
@@ -982,7 +1635,7 @@ function PatientDetails() {
                             />
                           </div>
 
-                          {builderMode !== "ai" && days.length > 1 && (
+                          {builderMode !== "ai" && activeDays.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeDay(index)}
@@ -997,6 +1650,10 @@ function PatientDetails() {
                           <MealEditor
                             icon="Sunrise"
                             label="Breakfast"
+                            slotKey="breakfast"
+                            goal={goal}
+                            dosha={dosha}
+                            onChooseFromLibrary={() => openMealLibrary(index, "breakfast")}
                             value={day.breakfast}
                             onChange={(value) =>
                               updateDayField(index, "breakfast", value)
@@ -1005,6 +1662,10 @@ function PatientDetails() {
                           <MealEditor
                             icon="Sun"
                             label="Lunch"
+                            slotKey="lunch"
+                            goal={goal}
+                            dosha={dosha}
+                            onChooseFromLibrary={() => openMealLibrary(index, "lunch")}
                             value={day.lunch}
                             onChange={(value) =>
                               updateDayField(index, "lunch", value)
@@ -1013,6 +1674,10 @@ function PatientDetails() {
                           <MealEditor
                             icon="Moon"
                             label="Dinner"
+                            slotKey="dinner"
+                            goal={goal}
+                            dosha={dosha}
+                            onChooseFromLibrary={() => openMealLibrary(index, "dinner")}
                             value={day.dinner}
                             onChange={(value) =>
                               updateDayField(index, "dinner", value)
@@ -1148,8 +1813,9 @@ function PatientDetails() {
                             {plan.title}
                           </p>
                           <p className="text-sm text-gray-600">
-                            {plan.status} | Created{" "}
-                            {new Date(plan.createdAt).toLocaleDateString()}
+                            {plan.status} | Review due{" "}
+                            {formatDateDayMonthYear(plan.reviewDueDate || plan.createdAt)}{" "}
+                            | Created {formatDateDayMonthYear(plan.createdAt)}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
@@ -1159,13 +1825,20 @@ function PatientDetails() {
                               event.stopPropagation();
                               startEditingPlan(plan);
                             }}
-                            className="text-sm font-medium text-gray-800 transition hover:text-black"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition hover:bg-black hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-300"
                           >
                             Edit Plan
                           </button>
-                          <span className="text-sm text-gray-700">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setExpandedPlanId(isExpanded ? null : plan._id);
+                            }}
+                            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition hover:bg-black hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                          >
                             {isExpanded ? "Hide meals" : "View meals"}
-                          </span>
+                          </button>
                         </div>
                       </div>
 
@@ -1366,6 +2039,34 @@ function PatientDetails() {
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Symptoms Score (1-10)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={progressForm.symptomScore}
+                    onChange={(event) =>
+                      handleProgressFieldChange("symptomScore", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Log Date & Time</span>
+                  <input
+                    type="datetime-local"
+                    value={progressForm.recordedAt}
+                    onChange={(event) =>
+                      handleProgressFieldChange("recordedAt", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-2">
                   <span className="text-sm text-gray-700">Digestion</span>
                   <select
                     value={progressForm.digestion}
@@ -1379,18 +2080,120 @@ function PatientDetails() {
                   </select>
                 </label>
 
-                <label className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={progressForm.adherence}
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Digestion Detail</span>
+                  <select
+                    value={progressForm.digestionDetail}
                     onChange={(event) =>
-                      handleProgressFieldChange("adherence", event.target.checked)
+                      handleProgressFieldChange("digestionDetail", event.target.value)
                     }
-                    className="h-4 w-4 rounded border-gray-300 bg-transparent"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="bloating">Bloating</option>
+                    <option value="acidity">Acidity</option>
+                    <option value="constipation">Constipation</option>
+                    <option value="loose stools">Loose stools</option>
+                    <option value="mixed">Mixed</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Adherence (%)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={progressForm.adherence}
+                    onChange={(event) =>
+                      handleProgressFieldChange("adherence", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
                   />
-                  <span className="text-sm text-gray-700">
-                    Patient followed the plan
-                  </span>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Appetite</span>
+                  <select
+                    value={progressForm.appetite}
+                    onChange={(event) =>
+                      handleProgressFieldChange("appetite", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Sleep Hours</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={progressForm.sleepHours}
+                    onChange={(event) =>
+                      handleProgressFieldChange("sleepHours", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Water Intake (L)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="0.1"
+                    value={progressForm.waterIntakeLiters}
+                    onChange={(event) =>
+                      handleProgressFieldChange("waterIntakeLiters", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Activity (minutes)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    step="1"
+                    value={progressForm.activityMinutes}
+                    onChange={(event) =>
+                      handleProgressFieldChange("activityMinutes", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-gray-700">Stress Level (1-5)</span>
+                  <select
+                    value={progressForm.stressLevel}
+                    onChange={(event) =>
+                      handleProgressFieldChange("stressLevel", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-gray-400 focus:outline-none"
+                  >
+                    {[1, 2, 3, 4, 5].map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
@@ -1441,7 +2244,7 @@ function PatientDetails() {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="text-sm font-medium text-gray-900">
-                          {new Date(log.createdAt).toLocaleDateString()}
+                          {formatDateTimeDayMonthYear(getLogTimestamp(log))}
                         </p>
                         <p className="text-xs text-gray-600">
                           {log.plan?.title
@@ -1453,7 +2256,9 @@ function PatientDetails() {
                       <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-700">
                         <p>Weight: {log.weight ?? "-"}</p>
                         <p>Energy: {log.energyLevel ?? "-"}/5</p>
+                        <p>Symptoms: {log.symptomScore ?? "-"}/10</p>
                         <p>Digestion: {log.digestion || "-"}</p>
+                        <p>Digestion Detail: {log.digestionDetail || "-"}</p>
                         <p>
                           Adherence:{" "}
                           {typeof log.adherence === "number"
@@ -1462,6 +2267,11 @@ function PatientDetails() {
                               ? "100%"
                               : "30%"}
                         </p>
+                        <p>Sleep: {log.sleepHours ?? "-"} hrs</p>
+                        <p>Water: {log.waterIntakeLiters ?? "-"} L</p>
+                        <p>Appetite: {log.appetite || "-"}</p>
+                        <p>Activity: {log.activityMinutes ?? "-"} min</p>
+                        <p>Stress: {log.stressLevel ?? "-"}/5</p>
                       </div>
 
                       {log.notes && (
@@ -1516,19 +2326,17 @@ export default PatientDetails;
 
 function MealsList({ meals = [], compact = false }) {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-
-  useEffect(() => {
-    setSelectedDayIndex((current) =>
-      Math.min(current, Math.max((meals?.length || 1) - 1, 0))
-    );
-  }, [meals?.length]);
+  const clampedSelectedDayIndex = Math.min(
+    selectedDayIndex,
+    Math.max((meals?.length || 1) - 1, 0)
+  );
 
   if (!meals.length) {
     return <p className="text-sm text-gray-600">No meals added.</p>;
   }
 
   if (compact) {
-    const selectedMeal = meals[selectedDayIndex] || meals[0];
+    const selectedMeal = meals[clampedSelectedDayIndex] || meals[0];
 
     return (
       <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 md:p-6">
@@ -1543,7 +2351,7 @@ function MealsList({ meals = [], compact = false }) {
                 type="button"
                 onClick={() => setSelectedDayIndex(index)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  selectedDayIndex === index
+                  clampedSelectedDayIndex === index
                     ? "bg-gray-900 text-white"
                     : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
                 }`}
@@ -1600,8 +2408,13 @@ function PlanValidationCard({ validation }) {
     return null;
   }
 
-  const { score, issues, suggestions } = validation;
-  const badgeClasses = score < 5 ? "bg-black text-white" : "bg-gray-100 text-gray-700";
+  const { score, issues, suggestions, hasMealEntries = true } = validation;
+  const hasNumericScore = typeof score === "number";
+  const badgeClasses = !hasNumericScore
+    ? "bg-gray-100 text-gray-700"
+    : score < 5
+      ? "bg-black text-white"
+      : "bg-gray-100 text-gray-700";
 
   return (
     <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 md:p-6">
@@ -1613,7 +2426,7 @@ function PlanValidationCard({ validation }) {
           <p className="mt-1 text-lg font-semibold text-gray-900">Plan Quality</p>
         </div>
         <div className={`rounded-full px-4 py-2 text-lg font-semibold ${badgeClasses}`}>
-          Score: {score}/10
+          Score: {hasNumericScore ? `${score}/10` : "N/A"}
         </div>
       </div>
 
@@ -1621,7 +2434,11 @@ function PlanValidationCard({ validation }) {
         <div className="space-y-2 rounded-xl bg-gray-50 p-4">
           <p className="text-sm font-medium text-gray-600">Warning Issues</p>
           <p className="text-xs text-gray-600">Review these items first</p>
-          {issues.length ? (
+          {!hasMealEntries ? (
+            <p className="text-sm text-gray-600">
+              Add at least one meal to start validation.
+            </p>
+          ) : issues.length ? (
             <div className="space-y-2">
               {issues.map((issue) => (
                 <p key={issue} className="text-sm text-gray-600">
@@ -1639,7 +2456,11 @@ function PlanValidationCard({ validation }) {
           <p className="text-xs text-gray-600">
             Simple ways to improve balance
           </p>
-          {suggestions.length ? (
+          {!hasMealEntries ? (
+            <p className="text-sm text-gray-600">
+              Suggestions will appear after meals are added.
+            </p>
+          ) : suggestions.length ? (
             <div className="space-y-2">
               {suggestions.map((suggestion) => (
                 <p key={suggestion} className="text-sm text-gray-700">
@@ -1671,24 +2492,42 @@ function ChangesMadeCard({ changes }) {
   );
 }
 
-function MealEditor({ icon, label, value, onChange }) {
+function MealEditor({
+  icon,
+  label,
+  value,
+  onChange,
+  onChooseFromLibrary,
+}) {
   return (
-    <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-center gap-3">
-        <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-          {icon}
+    <div className="grid h-full grid-rows-[76px_112px] gap-4 rounded-2xl border border-gray-200 bg-[#fcfcfb] p-4">
+      <div className="flex h-[76px] items-start justify-between gap-3">
+        <div className="flex h-[56px] items-start gap-3">
+          <div className="rounded-full bg-[#eef4d0] px-3 py-1 text-xs font-medium text-gray-800">
+            {icon}
+          </div>
+          <div className="h-[48px]">
+            <p className="text-sm font-medium text-gray-900">{label}</p>
+            <p className="text-xs text-gray-500">
+              Type manually or choose from library
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-medium text-gray-900">{label}</p>
-          <p className="text-xs text-gray-500">Add meal details</p>
-        </div>
+
+        <button
+          type="button"
+          onClick={onChooseFromLibrary}
+          className="inline-flex h-11 w-[92px] shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100"
+        >
+          Choose Dish
+        </button>
       </div>
 
       <textarea
         placeholder={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-28 w-full resize-none rounded-xl border border-gray-300 bg-white p-3 text-sm text-gray-900 placeholder:text-gray-500 focus:border-gray-400 focus:outline-none"
+        className="h-full w-full resize-none rounded-xl border border-gray-300 bg-white p-3 text-sm text-gray-900 placeholder:text-gray-500 focus:border-gray-400 focus:outline-none"
       />
     </div>
   );

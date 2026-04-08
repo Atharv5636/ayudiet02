@@ -1,15 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
+import AppBootstrap from "./AppBootstrap";
+import { getFrontendEnvHealth } from "./utils/env";
 import "./index.css";
 
-console.log("API URL:", import.meta.env.VITE_API_URL);
+const envHealth = getFrontendEnvHealth();
+
+if (envHealth.warnings.length > 0) {
+  envHealth.warnings.forEach((warning) => console.warn(`[ENV WARNING] ${warning}`));
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <AppBootstrap />
   </React.StrictMode>
 );

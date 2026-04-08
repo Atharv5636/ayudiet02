@@ -1,29 +1,19 @@
 import SignupForm from "../components/auth/SignupForm";
+import AuthShell from "../components/auth/AuthShell";
 
 function Signup() {
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-      <div className="min-h-screen w-full flex items-center justify-center px-4 sm:px-6">
-        <div className="grid w-full max-w-6xl grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <div className="flex justify-center">
-            <SignupForm />
-          </div>
-
-          <div className="hidden lg:flex flex-col justify-center space-y-6 text-neutral-300">
-            <p className="text-2xl leading-relaxed">
-              Healthy routines begin with
-              <br />
-              mindful, personalized planning.
-            </p>
-
-            <p className="text-sm italic text-neutral-400 max-w-md">
-              Create your doctor account to manage patients, generate plans, and
-              track progress with confidence.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AuthShell
+      eyebrow="Create Account"
+      title="Start Your AyuDiet Workspace"
+      description="Set up your account and begin organizing patient assessments, care plans, and progress tracking from one calm dashboard."
+      panelTitle="Thoughtful nutrition workflows for every consultation."
+      panelDescription="Bring together Ayurvedic guidance, patient history, and plan tracking in a space that feels clear, focused, and clinical."
+      quote="When food and routine are chosen with awareness, healing becomes part of daily life."
+      quoteAuthor="AyuDiet care philosophy"
+    >
+      <SignupForm />
+    </AuthShell>
   );
 }
 
