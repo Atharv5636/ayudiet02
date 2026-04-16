@@ -7,6 +7,9 @@ import { resolveApiAssetUrl } from "../../utils/apiBaseUrl";
 function Patients() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
+  const [doctorInfo, setDoctorInfo] = useState({ name: "", email: "" });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
 
@@ -24,15 +27,37 @@ function Patients() {
   useEffect(() => {
     async function fetchPatients() {
       try {
+        setLoading(true);
+        setError("");
         const token = localStorage.getItem("token");
-        const data = await fetchJson("/patients", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        if (!token) {
+          setPatients([]);
+          setDoctorInfo({ name: "", email: "" });
+          setError("Session expired. Please log in again.");
+          return;
+        }
+        const headers = {
+          Authorization: `Bearer ${token}`,
+        };
+        const [data, meData] = await Promise.all([
+          fetchJson("/patients", { headers }),
+          fetchJson("/auth/me", { headers }),
+        ]);
+        setPatients(Array.isArray(data?.patients) ? data.patients : []);
+        setDoctorInfo({
+          name: String(meData?.doctor?.name || "").trim(),
+          email: String(meData?.doctor?.email || "").trim().toLowerCase(),
         });
-        setPatients(data.patients);
       } catch (error) {
         console.error("Error fetching patients:", error);
+        setPatients([]);
+        setDoctorInfo({ name: "", email: "" });
+        setError(
+          error?.message ||
+            "Unable to fetch patients. Please check login/session and try again."
+        );
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -54,7 +79,14 @@ function Patients() {
     <div className="space-y-4">
       <BackNavLink to="/dashboard" label="Back to Dashboard" />
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
+          {doctorInfo.email && (
+            <p className="mt-1 text-sm text-gray-500">
+              Logged in as {doctorInfo.name || "Doctor"} ({doctorInfo.email})
+            </p>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => navigate("/dashboard/add-patient")}
@@ -64,8 +96,17 @@ function Patients() {
         </button>
       </div>
 
-      {patients.length === 0 ? (
-        <p className="text-gray-600">No patients were found.</p>
+      {loading ? (
+        <p className="text-gray-600">Loading patients...</p>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      ) : patients.length === 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          No patients were found for this doctor account.
+          {doctorInfo.email ? ` Active account: ${doctorInfo.email}.` : ""}
+        </div>
       ) : (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow-md">
           <div className="space-y-3">

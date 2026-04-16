@@ -36,8 +36,10 @@ const normalizeOrigin = (value) => {
   }
 };
 
+const configuredCorsOrigins = process.env.CORS_ORIGIN || process.env.CCORS_ORIGIN || "";
+
 const allowedOrigins = [
-  ...(process.env.CORS_ORIGIN || "").split(","),
+  ...configuredCorsOrigins.split(","),
   ...(process.env.FRONTEND_ORIGIN || "").split(","),
   ...(allowLocalhostOrigins ? allowedLocalOrigins : []),
 ]
@@ -98,11 +100,16 @@ app.get("/", (req, res) => {
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // routes
-app.use("/health", healthRoutes);
-app.use("/auth", authRoutes);
-app.use("/patients", patientRoutes);
-app.use("/plans", planRoutes);
-app.use("/progress", progressRoutes);
+const registerApiRoutes = (prefix = "") => {
+  app.use(`${prefix}/health`, healthRoutes);
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/patients`, patientRoutes);
+  app.use(`${prefix}/plans`, planRoutes);
+  app.use(`${prefix}/progress`, progressRoutes);
+};
+
+registerApiRoutes("");
+registerApiRoutes("/api");
 
 app.use((req, res) => {
   res.status(404).json({

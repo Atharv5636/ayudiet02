@@ -64,7 +64,7 @@ function SignupForm() {
               body: JSON.stringify({ idToken: response.credential }),
             });
 
-            await completeAuthLogin(data);
+            await completeAuthLogin(data, navigate);
           } catch (error) {
             setMessage(error.message || "Google signup failed");
           } finally {

@@ -4,6 +4,7 @@ const Patient = require("../models/patient.model");
 const Plan = require("../models/plan.model");
 const ApiError = require("../utils/ApiError");
 const { modifyPlanBasedOnProgress } = require("../services/adaptivePlanService");
+const { trackAdherenceFeedback } = require("../services/userHistoryService");
 const debugLogsEnabled = process.env.DEBUG_LOGS === "true";
 const debugLog = (...args) => {
   if (debugLogsEnabled) {
@@ -12,6 +13,11 @@ const debugLog = (...args) => {
 };
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
+const normalizeGoalText = (goal = "") => {
+  const normalized = String(goal || "").trim();
+  return normalized || "general wellness";
+};
+const toGoalKey = (goal = "") => normalizeGoalText(goal).toLowerCase();
 const normalizeAdherenceScore = (value) => {
   const parsedValue = Number(value);
 
@@ -62,6 +68,8 @@ const createProgressLog = async (req, res, next) => {
     const {
       patient: patientFromBody,
       patientId: patientIdFromBody,
+      planId: planIdFromBody,
+      goal,
       weight,
       energy,
       energyLevel,
@@ -107,11 +115,32 @@ const createProgressLog = async (req, res, next) => {
       return next(new ApiError(404, "Patient not found"));
     }
 
-    const activePlan = await Plan.findOne({
-      patient: patientId,
-      doctor: req.user.id,
-      isActive: true,
-    });
+    let activePlan = null;
+    if (planIdFromBody && isValidObjectId(planIdFromBody)) {
+      activePlan = await Plan.findOne({
+        _id: planIdFromBody,
+        patient: patientId,
+        doctor: req.user.id,
+        isActive: true,
+      });
+    }
+
+    if (!activePlan && String(goal || "").trim()) {
+      activePlan = await Plan.findOne({
+        patient: patientId,
+        doctor: req.user.id,
+        isActive: true,
+        goalKey: toGoalKey(goal),
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!activePlan) {
+      activePlan = await Plan.findOne({
+        patient: patientId,
+        doctor: req.user.id,
+        isActive: true,
+      }).sort({ createdAt: -1 });
+    }
 
     const progressLog = await ProgressLog.create({
       patient: patientId,
@@ -151,9 +180,20 @@ const createProgressLog = async (req, res, next) => {
       notes: notes?.trim() || "",
       recordedAt: normalizedRecordedAt,
     });
+    await trackAdherenceFeedback({
+      patientId,
+      progressLog,
+    }).catch(() => {});
 
-    const result = await modifyPlanBasedOnProgress(patientId);
-    const plan = await Plan.findOne({ patient: patientId, isActive: true });
+    const result = await modifyPlanBasedOnProgress(patientId, {
+      ...(activePlan?._id ? { planId: activePlan._id } : {}),
+      ...(String(goal || "").trim() ? { goal: String(goal).trim() } : {}),
+    });
+    const plan = activePlan?._id
+      ? await Plan.findOne({ _id: activePlan._id, patient: patientId, isActive: true })
+      : await Plan.findOne({ patient: patientId, isActive: true }).sort({
+          createdAt: -1,
+        });
 
     if (!plan) {
       debugLog("No active plan found for patient:", patientId);

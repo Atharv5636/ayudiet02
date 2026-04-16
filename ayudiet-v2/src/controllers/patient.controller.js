@@ -1,5 +1,9 @@
 const Patient = require("../models/patient.model");
 const ApiError = require("../utils/ApiError");
+const { processPatientInput } = require("../utils/userProfileProcessor");
+const { buildHealthProfile } = require("../services/healthEngineService");
+const { buildLlmContext } = require("../services/llmContextBuilder");
+const { trackPreferenceSnapshot } = require("../services/userHistoryService");
 const fs = require("fs");
 const path = require("path");
 
@@ -24,58 +28,40 @@ const resolveUploadFilePath = (relativeUrl = "") =>
 // This creates a new patient for the logged-in doctor
 const addPatient = async (req, res, next) => {
   try {
-    const {
-      name,
-      age,
-      gender,
-      height,
-      weight,
-      dateOfBirth,
-      bloodGroup,
-      phone,
-      emergencyContactName,
-      emergencyContactPhone,
-      healthConditions,
-      currentMedications,
-      allergies,
-      dominantDosha,
-      dietType,
-      activityLevel,
-      preferences,
-      planningInputs,
-    } = req.body;
+    const { errors, patientData } = processPatientInput(req.body, {
+      requireCoreFields: true,
+      partialUpdate: false,
+    });
 
-    if (!name || !age || !gender) {
-      return next(new ApiError(400, "Name, age and gender are required"));
+    if (errors.length) {
+      return next(new ApiError(400, errors.join("; ")));
     }
 
     const patient = await Patient.create({
-      name,
-      age,
-      gender,
-      height,
-      weight,
-      dateOfBirth,
-      bloodGroup,
-      phone,
-      emergencyContactName,
-      emergencyContactPhone,
-      healthConditions,
-      currentMedications,
-      allergies,
-      prakriti: {
-        dominantDosha,
-      },
-      dietType,
-      activityLevel,
-      preferences,
-      planningInputs,
+      ...patientData,
       doctor: req.user.id,
     });
+    const normalizedSaved = processPatientInput(patient.toObject(), {
+      requireCoreFields: false,
+      partialUpdate: false,
+    });
+    const healthProfile = buildHealthProfile(normalizedSaved.userProfile);
+    const llmContext = buildLlmContext({
+      userProfile: normalizedSaved.userProfile,
+      healthProfile,
+    });
+    await trackPreferenceSnapshot({
+      patientId: patient._id,
+      patientData,
+      source: "patient_create",
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,
       patient,
+      userProfile: normalizedSaved.userProfile,
+      healthProfile,
+      llmContext,
     });
   } catch (error) {
     next(error);
@@ -144,17 +130,47 @@ const updatePatient = async (req, res, next) => {
       return next(new ApiError(403, "Not authorized to update this patient"));
     }
 
+    const { errors, patientData } = processPatientInput(req.body, {
+      requireCoreFields: false,
+      partialUpdate: true,
+    });
+
+    if (errors.length) {
+      return next(new ApiError(400, errors.join("; ")));
+    }
+
+    if (!Object.keys(patientData).length) {
+      return next(new ApiError(400, "No valid patient fields provided for update"));
+    }
+
     // 3. Update patient
     const updatedPatient = await Patient.findByIdAndUpdate(
       patientId,
-      req.body,
-      { new: true }
+      patientData,
+      { new: true, runValidators: true }
     );
+    const normalizedUpdated = processPatientInput(updatedPatient.toObject(), {
+      requireCoreFields: false,
+      partialUpdate: false,
+    });
+    const healthProfile = buildHealthProfile(normalizedUpdated.userProfile);
+    const llmContext = buildLlmContext({
+      userProfile: normalizedUpdated.userProfile,
+      healthProfile,
+    });
+    await trackPreferenceSnapshot({
+      patientId,
+      patientData,
+      source: "patient_update",
+    }).catch(() => {});
 
     res.status(200).json({
       success: true,
       message: "Patient updated successfully",
       patient: updatedPatient,
+      userProfile: normalizedUpdated.userProfile,
+      healthProfile,
+      llmContext,
     });
   } catch (error) {
     next(error);

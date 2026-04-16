@@ -101,6 +101,11 @@ const REVERSE_CHANGE_TYPES = {
 };
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
+const normalizeGoalText = (goal = "") => {
+  const normalized = String(goal || "").trim();
+  return normalized || "general wellness";
+};
+const toGoalKey = (goal = "") => normalizeGoalText(goal).toLowerCase();
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const roundScore = (value) => Math.round(clamp(value, 0, 100));
@@ -1074,7 +1079,7 @@ const selectPriorityChanges = (
   };
 };
 
-const modifyPlanBasedOnProgress = async (patientId) => {
+const modifyPlanBasedOnProgress = async (patientId, options = {}) => {
   if (!patientId || !isValidObjectId(patientId)) {
     throw new ApiError(400, "Invalid patient id");
   }
@@ -1085,10 +1090,23 @@ const modifyPlanBasedOnProgress = async (patientId) => {
     throw new ApiError(404, "Patient not found");
   }
 
-  const activePlanQuery = Plan.findOne({
-    patient: patientId,
-    isActive: true,
-  });
+  const requestedPlanId =
+    options?.planId && isValidObjectId(options.planId)
+      ? String(options.planId)
+      : null;
+  const requestedGoal = String(options?.goal || "").trim();
+  const activePlanFilter = requestedPlanId
+    ? { _id: requestedPlanId, patient: patientId, isActive: true }
+    : {
+        patient: patientId,
+        isActive: true,
+        ...(requestedGoal ? { goalKey: toGoalKey(requestedGoal) } : {}),
+      };
+
+  let activePlanQuery = Plan.findOne(activePlanFilter);
+  if (!requestedPlanId && typeof activePlanQuery?.sort === "function") {
+    activePlanQuery = activePlanQuery.sort({ createdAt: -1 });
+  }
   let activePlan = await activePlanQuery;
 
   if (

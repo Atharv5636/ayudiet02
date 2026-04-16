@@ -1,3 +1,5 @@
+const foods = require("../data/foods.json");
+
 const PROTEIN_KEYWORDS = [
   "dal",
   "lentil",
@@ -68,12 +70,45 @@ const normalizeMealText = (value = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
+const KNOWN_DISH_NAMES = new Set(
+  (Array.isArray(foods) ? foods : [])
+    .map((food) => normalizeMealText(food?.name || ""))
+    .filter(Boolean)
+);
+
+const isRecognizableMealName = (meal = "") => {
+  const normalized = normalizeMealText(meal);
+  if (!normalized) return false;
+  if (includesAnyKeyword(normalized, MEAL_VALIDATION_KEYWORDS)) return true;
+  if (KNOWN_DISH_NAMES.has(normalized)) return true;
+
+  for (const dishName of KNOWN_DISH_NAMES) {
+    if (dishName.includes(normalized) || normalized.includes(dishName)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const mealEntries = (meals = []) =>
   meals.flatMap((mealDay) =>
     ["breakfast", "lunch", "dinner"]
       .map((slot) => normalizeMealText(mealDay?.[slot]))
       .filter(Boolean)
   );
+
+const countConsecutiveSlotRepeats = (meals = [], slot = "breakfast") => {
+  let repeats = 0;
+  for (let index = 1; index < meals.length; index += 1) {
+    const current = normalizeMealText(meals[index]?.[slot]);
+    const previous = normalizeMealText(meals[index - 1]?.[slot]);
+    if (current && previous && current === previous) {
+      repeats += 1;
+    }
+  }
+  return repeats;
+};
 
 const includesAnyKeyword = (text, keywords) =>
   keywords.some((keyword) => text.includes(keyword));
@@ -116,36 +151,50 @@ const validatePlan = (meals = [], doshaType = "") => {
     score -= completionPenalty;
   }
 
-  const unrecognizedMeals = normalizedEntries.filter(
-    (meal) => !includesAnyKeyword(meal, MEAL_VALIDATION_KEYWORDS)
-  );
-  if (unrecognizedMeals.length) {
+  const unrecognizedMeals = normalizedEntries.filter((meal) => !isRecognizableMealName(meal));
+  const unrecognizedRatio = normalizedEntries.length
+    ? unrecognizedMeals.length / normalizedEntries.length
+    : 0;
+  if (unrecognizedRatio >= 0.25) {
     issues.push("Some meal entries are not recognizable food names");
     suggestions.push("Use clear dish names like moong dal, khichdi, tofu curry, etc.");
-    score -= Math.min(4, unrecognizedMeals.length);
+    score -= unrecognizedRatio >= 0.5 ? 2 : 1;
   }
 
   const uniqueEntries = new Set(normalizedEntries);
+  const duplicateCount = normalizedEntries.length - uniqueEntries.size;
+  const duplicateRatio = normalizedEntries.length
+    ? duplicateCount / normalizedEntries.length
+    : 0;
+  const repeatedSlotStreaks =
+    countConsecutiveSlotRepeats(meals, "breakfast") +
+    countConsecutiveSlotRepeats(meals, "lunch") +
+    countConsecutiveSlotRepeats(meals, "dinner");
 
-  if (normalizedEntries.length && uniqueEntries.size < normalizedEntries.length) {
+  const hasExcessiveRepetition =
+    duplicateRatio >= 0.5 ||
+    repeatedSlotStreaks >= 3;
+
+  if (normalizedEntries.length && hasExcessiveRepetition) {
     issues.push("Too repetitive across days");
     suggestions.push("Rotate meal choices so each day feels distinct");
-    score -= 2;
+    score -= duplicateRatio >= 0.5 ? 3 : 2;
   }
 
   const carbHeavyDays = meals.filter((mealDay) => {
     const slots = [mealDay.breakfast, mealDay.lunch, mealDay.dinner].map(
       normalizeMealText
     );
+    const carbCount = slots.filter((slot) => includesAnyKeyword(slot, CARB_KEYWORDS)).length;
+    const hasProtein = slots.some((slot) => includesAnyKeyword(slot, PROTEIN_KEYWORDS));
 
-    return slots.filter((slot) => includesAnyKeyword(slot, CARB_KEYWORDS))
-      .length >= 2;
+    return carbCount >= 2 && !hasProtein;
   });
 
-  if (carbHeavyDays.length) {
+  if (carbHeavyDays.length >= Math.ceil(Math.max(meals.length, 1) * 0.4)) {
     issues.push("Several days are carb-heavy");
     suggestions.push("Balance heavier grains with soups, vegetables, or legumes");
-    score -= 2;
+    score -= 1;
   }
 
   const lowProteinDays = meals.filter((mealDay) => {
@@ -161,10 +210,10 @@ const validatePlan = (meals = [], doshaType = "") => {
     return !slots.some((slot) => includesAnyKeyword(slot, PROTEIN_KEYWORDS));
   });
 
-  if (lowProteinDays.length) {
+  if (lowProteinDays.length >= Math.ceil(Math.max(meals.length, 1) * 0.3)) {
     issues.push("Low protein coverage on some days");
     suggestions.push("Add lentils, moong, paneer, tofu, or curd each day");
-    score -= 3;
+    score -= 2;
   }
 
   const restrictedKeywords = DOSHA_RESTRICTIONS[doshaType] || [];

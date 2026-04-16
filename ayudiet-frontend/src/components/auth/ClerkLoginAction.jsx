@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import { fetchJson } from "../../services/api";
 import { completeAuthLogin } from "../../utils/authSession";
 
 function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
+  const navigate = useNavigate();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { signOut, openSignIn } = useClerk();
   const exchangingRef = useRef(false);
@@ -29,7 +31,7 @@ function ClerkLoginAction({ disabled = false, onError, onSuccess }) {
           body: JSON.stringify({ clerkToken }),
         });
 
-        await completeAuthLogin(data);
+        await completeAuthLogin(data, navigate);
 
         completedRef.current = true;
         onSuccess?.();

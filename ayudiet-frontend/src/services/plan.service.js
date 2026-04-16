@@ -78,7 +78,12 @@ export const updatePlan = async (planId, planPayload) => {
   }
 };
 
-export const generatePersonalizedMeals = async ({ patientId, goal, doshaType }) => {
+export const generatePersonalizedMeals = async ({
+  patientId,
+  goal,
+  doshaType,
+  totalDays = 7,
+}) => {
   if (!patientId || !goal || !doshaType) {
     throw new Error("patientId, goal, and doshaType are required");
   }
@@ -88,12 +93,36 @@ export const generatePersonalizedMeals = async ({ patientId, goal, doshaType }) 
       patientId,
       goal,
       doshaType,
+      totalDays,
     });
     return res.data;
   } catch (error) {
     throw new Error(
       error?.response?.data?.message || "Failed to generate personalized meals"
     );
+  }
+};
+
+export const generateSlotChart = async ({
+  patientId,
+  planId,
+  baseMeals,
+  doshaType,
+} = {}) => {
+  if (!patientId) {
+    throw new Error("patientId is required");
+  }
+
+  try {
+    const res = await api.post(`${PLANS_BASE_PATH}/generate-slot-chart`, {
+      patientId,
+      ...(planId ? { planId } : {}),
+      ...(Array.isArray(baseMeals) ? { baseMeals } : {}),
+      ...(doshaType ? { doshaType } : {}),
+    });
+    return res.data;
+  } catch (error) {
+    throw new Error(error?.response?.data?.message || "Failed to generate slot chart");
   }
 };
 

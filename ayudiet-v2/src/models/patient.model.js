@@ -105,6 +105,40 @@ const patientSchema = new mongoose.Schema(
       waterIntakeLiters: {
         type: Number,
       },
+      budgetTier: {
+        type: String,
+        enum: ["low", "medium", "high"],
+      },
+      localRegion: {
+        type: String,
+        trim: true,
+      },
+      mealTimings: {
+        wakeUpTime: {
+          type: String,
+          trim: true,
+        },
+        breakfastTime: {
+          type: String,
+          trim: true,
+        },
+        lunchTime: {
+          type: String,
+          trim: true,
+        },
+        eveningSnackTime: {
+          type: String,
+          trim: true,
+        },
+        dinnerTime: {
+          type: String,
+          trim: true,
+        },
+        bedTime: {
+          type: String,
+          trim: true,
+        },
+      },
     },
 
     phone: {
@@ -196,6 +230,151 @@ const patientSchema = new mongoose.Schema(
         default: Date.now,
       },
     },
+
+    planHistory: [
+      {
+        planId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Plan",
+        },
+        title: {
+          type: String,
+          trim: true,
+        },
+        goal: {
+          type: String,
+          trim: true,
+        },
+        doshaType: {
+          type: String,
+          trim: true,
+        },
+        generationSource: {
+          type: String,
+          trim: true,
+        },
+        status: {
+          type: String,
+          trim: true,
+        },
+        isActive: {
+          type: Boolean,
+          default: false,
+        },
+        mealsPreview: {
+          breakfast: {
+            type: String,
+            trim: true,
+          },
+          lunch: {
+            type: String,
+            trim: true,
+          },
+          dinner: {
+            type: String,
+            trim: true,
+          },
+        },
+        trackedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    preferenceHistory: [
+      {
+        dietType: {
+          type: String,
+          trim: true,
+        },
+        activityLevel: {
+          type: Number,
+          min: 1,
+          max: 5,
+        },
+        preferences: {
+          type: [String],
+          default: [],
+        },
+        planningInputs: {
+          primaryGoal: {
+            type: String,
+            trim: true,
+          },
+          targetWeight: {
+            type: Number,
+          },
+          timeframeWeeks: {
+            type: Number,
+          },
+          mealPattern: {
+            type: String,
+            trim: true,
+          },
+          sleepHours: {
+            type: Number,
+          },
+          stressLevel: {
+            type: Number,
+          },
+          waterIntakeLiters: {
+            type: Number,
+          },
+          budgetTier: {
+            type: String,
+            trim: true,
+          },
+          localRegion: {
+            type: String,
+            trim: true,
+          },
+        },
+        source: {
+          type: String,
+          trim: true,
+        },
+        trackedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    adherenceHistory: [
+      {
+        planId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Plan",
+        },
+        adherence: {
+          type: Number,
+          min: 0,
+          max: 100,
+        },
+        energyLevel: {
+          type: Number,
+          min: 1,
+          max: 5,
+        },
+        digestion: {
+          type: String,
+          trim: true,
+        },
+        digestionDetail: {
+          type: String,
+          trim: true,
+        },
+        note: {
+          type: String,
+          trim: true,
+        },
+        recordedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
 
     doctor: {
       type: mongoose.Schema.Types.ObjectId,

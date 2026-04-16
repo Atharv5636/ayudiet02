@@ -7,7 +7,27 @@ const mealDaySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    earlyMorning: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    morning: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    afterExercise: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     breakfast: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    midMorning: {
       type: String,
       default: "",
       trim: true,
@@ -17,7 +37,27 @@ const mealDaySchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    after2Hours: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    evening: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    lateEvening: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     dinner: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    bedTime: {
       type: String,
       default: "",
       trim: true,
@@ -27,7 +67,26 @@ const mealDaySchema = new mongoose.Schema(
 );
 
 const hasAtLeastOneMeal = (mealDay) =>
-  Boolean(mealDay.breakfast || mealDay.lunch || mealDay.dinner);
+  Boolean(
+    mealDay.earlyMorning ||
+      mealDay.morning ||
+      mealDay.afterExercise ||
+      mealDay.breakfast ||
+      mealDay.midMorning ||
+      mealDay.lunch ||
+      mealDay.after2Hours ||
+      mealDay.evening ||
+      mealDay.lateEvening ||
+      mealDay.dinner ||
+      mealDay.bedTime
+  );
+
+const normalizeGoalText = (goal = "") => {
+  const normalized = String(goal || "").trim();
+  return normalized || "general wellness";
+};
+
+const toGoalKey = (goal = "") => normalizeGoalText(goal).toLowerCase();
 
 const planSchema = new mongoose.Schema(
   {
@@ -47,6 +106,20 @@ const planSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+
+    goal: {
+      type: String,
+      trim: true,
+      default: "general wellness",
+    },
+
+    goalKey: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: "general wellness",
+      index: true,
     },
 
     doshaType: {
@@ -112,5 +185,19 @@ const planSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+planSchema.pre("validate", function syncGoalFields() {
+  const normalizedGoal = normalizeGoalText(this.goal);
+  this.goal = normalizedGoal;
+  this.goalKey = toGoalKey(normalizedGoal);
+});
+
+planSchema.index({
+  doctor: 1,
+  patient: 1,
+  isActive: 1,
+  goalKey: 1,
+  createdAt: -1,
+});
 
 module.exports = mongoose.model("Plan", planSchema);

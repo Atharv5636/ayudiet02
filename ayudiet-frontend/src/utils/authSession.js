@@ -31,7 +31,7 @@ export function persistAuthSession(data) {
   }
 }
 
-export async function completeAuthLogin(data) {
+export async function completeAuthLogin(data, navigate) {
   const token = getAuthTokenFromPayload(data);
   if (!token) {
     const topLevelKeys = Object.keys(data || {});
@@ -46,6 +46,11 @@ export async function completeAuthLogin(data) {
   }
 
   persistAuthSession(data);
+  if (typeof navigate === "function") {
+    navigate("/dashboard", { replace: true });
+    return;
+  }
+
   window.location.assign("/dashboard");
 }
 

@@ -61,7 +61,7 @@ function LoginForm() {
               body: JSON.stringify({ idToken: response.credential }),
             });
 
-            await completeAuthLogin(data);
+            await completeAuthLogin(data, navigate);
           } catch (error) {
             setMessage(error.message || "Google login failed");
           } finally {
@@ -144,7 +144,7 @@ function LoginForm() {
           name: data?.doctor?.name || (email.includes("@") ? email.split("@")[0] : ""),
           email: data?.doctor?.email || normalizedEmail,
         },
-      });
+      }, navigate);
     } catch (error) {
       setMessage(error.message || "Server error");
     } finally {

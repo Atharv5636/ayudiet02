@@ -32,6 +32,14 @@ const mockPatientForm = {
   sleepHours: "6.5",
   stressLevel: "3",
   waterIntakeLiters: "2.2",
+  budgetTier: "medium",
+  localRegion: "maharashtra",
+  wakeUpTime: "06:30",
+  breakfastTime: "08:30",
+  lunchTime: "13:00",
+  eveningSnackTime: "17:30",
+  dinnerTime: "20:00",
+  bedTime: "22:30",
 };
 
 function AddPatient() {
@@ -62,6 +70,14 @@ function AddPatient() {
     sleepHours: "",
     stressLevel: "3",
     waterIntakeLiters: "",
+    budgetTier: "low",
+    localRegion: "",
+    wakeUpTime: "",
+    breakfastTime: "",
+    lunchTime: "",
+    eveningSnackTime: "",
+    dinnerTime: "",
+    bedTime: "",
   });
 
   const [error, setError] = useState("");
@@ -131,6 +147,16 @@ function AddPatient() {
             sleepHours: Number(mockPatientForm.sleepHours),
             stressLevel: Number(mockPatientForm.stressLevel),
             waterIntakeLiters: Number(mockPatientForm.waterIntakeLiters),
+            budgetTier: mockPatientForm.budgetTier,
+            localRegion: mockPatientForm.localRegion,
+            mealTimings: {
+              wakeUpTime: mockPatientForm.wakeUpTime || undefined,
+              breakfastTime: mockPatientForm.breakfastTime || undefined,
+              lunchTime: mockPatientForm.lunchTime || undefined,
+              eveningSnackTime: mockPatientForm.eveningSnackTime || undefined,
+              dinnerTime: mockPatientForm.dinnerTime || undefined,
+              bedTime: mockPatientForm.bedTime || undefined,
+            },
           },
         }),
       });
@@ -206,6 +232,16 @@ function AddPatient() {
             waterIntakeLiters: form.waterIntakeLiters
               ? Number(form.waterIntakeLiters)
               : undefined,
+            budgetTier: form.budgetTier || undefined,
+            localRegion: form.localRegion || undefined,
+            mealTimings: {
+              wakeUpTime: form.wakeUpTime || undefined,
+              breakfastTime: form.breakfastTime || undefined,
+              lunchTime: form.lunchTime || undefined,
+              eveningSnackTime: form.eveningSnackTime || undefined,
+              dinnerTime: form.dinnerTime || undefined,
+              bedTime: form.bedTime || undefined,
+            },
           },
         }),
       });
@@ -278,6 +314,39 @@ function AddPatient() {
                 options={["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]}
               />
               <Input label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Select
+                label="Budget Tier"
+                name="budgetTier"
+                value={form.budgetTier}
+                onChange={handleChange}
+                options={["low", "medium", "high"]}
+              />
+              <Select
+                label="Local Region"
+                name="localRegion"
+                value={form.localRegion}
+                onChange={handleChange}
+                options={[
+                  "maharashtra",
+                  "gujarat",
+                  "punjab",
+                  "rajasthan",
+                  "uttar_pradesh",
+                  "bihar",
+                  "west_bengal",
+                  "odisha",
+                  "karnataka",
+                  "tamil_nadu",
+                  "kerala",
+                  "andhra_pradesh",
+                  "telangana",
+                  "assam",
+                  "pan_india",
+                ]}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -419,6 +488,51 @@ function AddPatient() {
                 value={form.stressLevel}
                 onChange={handleChange}
                 options={["1", "2", "3", "4", "5"]}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Input
+                label="Wake-up Time"
+                type="time"
+                name="wakeUpTime"
+                value={form.wakeUpTime}
+                onChange={handleChange}
+              />
+              <Input
+                label="Breakfast Time"
+                type="time"
+                name="breakfastTime"
+                value={form.breakfastTime}
+                onChange={handleChange}
+              />
+              <Input
+                label="Lunch Time"
+                type="time"
+                name="lunchTime"
+                value={form.lunchTime}
+                onChange={handleChange}
+              />
+              <Input
+                label="Evening Snack Time"
+                type="time"
+                name="eveningSnackTime"
+                value={form.eveningSnackTime}
+                onChange={handleChange}
+              />
+              <Input
+                label="Dinner Time"
+                type="time"
+                name="dinnerTime"
+                value={form.dinnerTime}
+                onChange={handleChange}
+              />
+              <Input
+                label="Bed Time"
+                type="time"
+                name="bedTime"
+                value={form.bedTime}
+                onChange={handleChange}
               />
             </div>
           </Section>

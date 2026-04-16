@@ -33,6 +33,11 @@ const doctorSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    clinicMobile: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   { timestamps: true }
 );

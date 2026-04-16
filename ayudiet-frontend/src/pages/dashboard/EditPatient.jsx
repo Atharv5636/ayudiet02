@@ -50,6 +50,14 @@ const initialForm = {
   sleepHours: "",
   stressLevel: "3",
   waterIntakeLiters: "",
+  budgetTier: "low",
+  localRegion: "",
+  wakeUpTime: "",
+  breakfastTime: "",
+  lunchTime: "",
+  eveningSnackTime: "",
+  dinnerTime: "",
+  bedTime: "",
 };
 
 function EditPatient() {
@@ -115,6 +123,15 @@ function EditPatient() {
           stressLevel: patient?.planningInputs?.stressLevel?.toString() || "3",
           waterIntakeLiters:
             patient?.planningInputs?.waterIntakeLiters?.toString() || "",
+          budgetTier: patient?.planningInputs?.budgetTier || "low",
+          localRegion: patient?.planningInputs?.localRegion || "",
+          wakeUpTime: patient?.planningInputs?.mealTimings?.wakeUpTime || "",
+          breakfastTime: patient?.planningInputs?.mealTimings?.breakfastTime || "",
+          lunchTime: patient?.planningInputs?.mealTimings?.lunchTime || "",
+          eveningSnackTime:
+            patient?.planningInputs?.mealTimings?.eveningSnackTime || "",
+          dinnerTime: patient?.planningInputs?.mealTimings?.dinnerTime || "",
+          bedTime: patient?.planningInputs?.mealTimings?.bedTime || "",
         });
         setDocuments(Array.isArray(patient?.documents) ? patient.documents : []);
         setPhoto(patient?.photo || null);
@@ -341,6 +358,16 @@ function EditPatient() {
           waterIntakeLiters: form.waterIntakeLiters
             ? Number(form.waterIntakeLiters)
             : undefined,
+          budgetTier: form.budgetTier || undefined,
+          localRegion: form.localRegion || undefined,
+          mealTimings: {
+            wakeUpTime: form.wakeUpTime || undefined,
+            breakfastTime: form.breakfastTime || undefined,
+            lunchTime: form.lunchTime || undefined,
+            eveningSnackTime: form.eveningSnackTime || undefined,
+            dinnerTime: form.dinnerTime || undefined,
+            bedTime: form.bedTime || undefined,
+          },
         },
       });
 
@@ -484,6 +511,41 @@ function EditPatient() {
                 value={form.phone}
                 onChange={handleChange}
                 disabled={saving}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <Select
+                label="Budget Tier"
+                name="budgetTier"
+                value={form.budgetTier}
+                onChange={handleChange}
+                disabled={saving}
+                options={["low", "medium", "high"]}
+              />
+              <Select
+                label="Local Region"
+                name="localRegion"
+                value={form.localRegion}
+                onChange={handleChange}
+                disabled={saving}
+                options={[
+                  "maharashtra",
+                  "gujarat",
+                  "punjab",
+                  "rajasthan",
+                  "uttar_pradesh",
+                  "bihar",
+                  "west_bengal",
+                  "odisha",
+                  "karnataka",
+                  "tamil_nadu",
+                  "kerala",
+                  "andhra_pradesh",
+                  "telangana",
+                  "assam",
+                  "pan_india",
+                ]}
               />
             </div>
             {(validationErrors.age || validationErrors.gender) && (
@@ -666,6 +728,57 @@ function EditPatient() {
                 onChange={handleChange}
                 disabled={saving}
                 options={["1", "2", "3", "4", "5"]}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <Input
+                label="Wake-up Time"
+                type="time"
+                name="wakeUpTime"
+                value={form.wakeUpTime}
+                onChange={handleChange}
+                disabled={saving}
+              />
+              <Input
+                label="Breakfast Time"
+                type="time"
+                name="breakfastTime"
+                value={form.breakfastTime}
+                onChange={handleChange}
+                disabled={saving}
+              />
+              <Input
+                label="Lunch Time"
+                type="time"
+                name="lunchTime"
+                value={form.lunchTime}
+                onChange={handleChange}
+                disabled={saving}
+              />
+              <Input
+                label="Evening Snack Time"
+                type="time"
+                name="eveningSnackTime"
+                value={form.eveningSnackTime}
+                onChange={handleChange}
+                disabled={saving}
+              />
+              <Input
+                label="Dinner Time"
+                type="time"
+                name="dinnerTime"
+                value={form.dinnerTime}
+                onChange={handleChange}
+                disabled={saving}
+              />
+              <Input
+                label="Bed Time"
+                type="time"
+                name="bedTime"
+                value={form.bedTime}
+                onChange={handleChange}
+                disabled={saving}
               />
             </div>
           </Section>

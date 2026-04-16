@@ -52,6 +52,7 @@ const buildAuthSuccessResponse = (message, token, doctor) => ({
     id: doctor._id,
     name: doctor.name,
     email: doctor.email,
+    clinicMobile: doctor.clinicMobile || "",
   },
   data: {
     token,
@@ -61,6 +62,7 @@ const buildAuthSuccessResponse = (message, token, doctor) => ({
       id: doctor._id,
       name: doctor.name,
       email: doctor.email,
+      clinicMobile: doctor.clinicMobile || "",
     },
   },
 });
@@ -171,9 +173,10 @@ const sendVerificationEmail = async ({ email, otp, name }) => {
 // SIGNUP CONTROLLER
 const signup = async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, clinicMobile, phone, mobile } = req.body;
     const normalizedName = String(name || "").trim();
     const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedClinicMobile = String(clinicMobile || phone || mobile || "").trim();
 
     // 1. Basic validation
     if (!normalizedName || !normalizedEmail || !password) {
@@ -197,6 +200,7 @@ const signup = async (req, res, next) => {
         email: normalizedEmail,
         password: hashedPassword,
         emailVerified: true,
+        clinicMobile: normalizedClinicMobile,
       });
 
       res.status(201).json({
@@ -229,6 +233,7 @@ const signup = async (req, res, next) => {
               emailVerified: false,
               emailVerificationOtpHash: otpHash,
               emailVerificationOtpExpiresAt: otpExpiry,
+              clinicMobile: normalizedClinicMobile,
             },
           },
           { new: true }
@@ -240,6 +245,7 @@ const signup = async (req, res, next) => {
           emailVerified: false,
           emailVerificationOtpHash: otpHash,
           emailVerificationOtpExpiresAt: otpExpiry,
+          clinicMobile: normalizedClinicMobile,
         });
 
     await sendVerificationEmail({
@@ -496,7 +502,7 @@ const clerkExchangeLogin = async (req, res, next) => {
 
 const getMe = async (req, res, next) => {
   try {
-    const doctor = await Doctor.findById(req.user.id).select("_id name email");
+    const doctor = await Doctor.findById(req.user.id).select("_id name email clinicMobile");
 
     if (!doctor) {
       return next(new ApiError(404, "Doctor not found"));
@@ -508,6 +514,7 @@ const getMe = async (req, res, next) => {
         id: doctor._id,
         name: doctor.name,
         email: doctor.email,
+        clinicMobile: doctor.clinicMobile || "",
       },
     });
   } catch (error) {

@@ -1,86 +1,1442 @@
 [
   {
     "name": "moong dal khichdi",
-    "dosha": ["vata", "pitta", "kapha"],
-    "goals": ["weight loss", "general wellness", "better digestion"],
-    "mealTypes": ["lunch", "dinner"],
-    "notes": "light, easy to digest, calming"
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "light, easy to digest, calming",
+    "image": "dishes/Moong Dal Khichdi.jpg"
   },
   {
-    "name": "stewed apples",
-    "dosha": ["vata", "pitta"],
-    "goals": ["weight loss", "better digestion", "general wellness"],
-    "mealTypes": ["breakfast"],
-    "notes": "warm fruit option, gentle on digestion"
+    "name": "vegetable daliya",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "warm whole-grain bowl with good satiety",
+    "image": "dishes/Vegetable Daliya.jpg"
   },
   {
     "name": "ragi porridge",
-    "dosha": ["vata", "kapha"],
-    "goals": ["weight loss", "general wellness"],
-    "mealTypes": ["breakfast"],
-    "notes": "warming and sustaining"
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "warming and sustaining",
+    "image": "dishes/Ragi Porridge.jpg"
   },
   {
-    "name": "vegetable millet bowl",
-    "dosha": ["kapha", "pitta"],
-    "goals": ["weight loss", "general wellness"],
-    "mealTypes": ["lunch"],
-    "notes": "high fiber, balanced"
+    "name": "jeera vegetable poha",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "light Indian breakfast with vegetables",
+    "image": "dishes/Jeera Vegetable Poha.jpg"
   },
   {
-    "name": "moong soup",
-    "dosha": ["vata", "pitta", "kapha"],
-    "goals": ["weight loss", "better digestion", "general wellness"],
-    "mealTypes": ["dinner"],
-    "notes": "light evening meal"
+    "name": "millet upma with vegetables",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "fiber-rich savory breakfast, easy for routine use",
+    "image": "dishes/Millet Upma with Vegetables.jpg"
   },
   {
-    "name": "paneer with sauteed vegetables",
-    "dosha": ["vata", "kapha"],
-    "goals": ["muscle gain", "general wellness"],
-    "mealTypes": ["lunch", "dinner"],
-    "notes": "higher protein vegetarian meal"
+    "name": "besan chilla with mint chutney",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "higher-protein meal with simple prep",
+    "regions": [
+      "north",
+      "west"
+    ]
   },
   {
-    "name": "ghee rice with dal",
-    "dosha": ["vata", "pitta"],
-    "goals": ["muscle gain", "general wellness"],
-    "mealTypes": ["lunch"],
-    "notes": "nourishing and grounding"
-  },
-  {
-    "name": "banana date smoothie bowl",
-    "dosha": ["vata"],
-    "goals": ["muscle gain"],
-    "mealTypes": ["breakfast"],
-    "notes": "calorie-dense and strengthening"
+    "name": "idli with sambar",
+    "dosha": [
+      "pitta",
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "soft fermented option, gut-friendly for many patients",
+    "regions": [
+      "south"
+    ]
   },
   {
     "name": "oats with soaked almonds",
-    "dosha": ["vata", "kapha"],
-    "goals": ["muscle gain", "general wellness"],
-    "mealTypes": ["breakfast"],
-    "notes": "steady energy breakfast"
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "steady-energy breakfast with healthy fats",
+    "image": "dishes/Oats with Soaked Almonds.jpg"
   },
   {
-    "name": "bottle gourd soup",
-    "dosha": ["pitta", "kapha"],
-    "goals": ["weight loss", "better digestion"],
-    "mealTypes": ["dinner"],
-    "notes": "cooling and light"
+    "name": "stewed apples with cinnamon",
+    "dosha": [
+      "vata",
+      "pitta"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "warm fruit option, gentle on digestion",
+    "image": "dishes/Stewed Apples with Cinnamon.jpg"
+  },
+  {
+    "name": "green moong sprouts stir-fry",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch"
+    ],
+    "notes": "high-protein local option, best lightly cooked",
+    "image": "dishes/Green Moong Sprouts Stir-fry.jpg"
+  },
+  {
+    "name": "paneer bhurji with multigrain roti",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch",
+      "dinner"
+    ],
+    "notes": "protein-dense and practical home meal",
+    "image": "dishes/Paneer Bhurji with Multigrain Roti.jpg"
+  },
+  {
+    "name": "tofu bhurji with sauteed vegetables",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "muscle gain",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch",
+      "dinner"
+    ],
+    "notes": "lighter protein swap for vegetarian plans",
+    "image": "dishes/Tofu Bhurji with Sauteed Vegetables.jpg"
+  },
+  {
+    "name": "vegetable millet bowl",
+    "dosha": [
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "high fiber, balanced",
+    "image": "dishes/Vegetable Millet Bowl.jpg"
+  },
+  {
+    "name": "lauki chana dal sabzi with roti",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "light lunch pattern common in Indian homes",
+    "regions": [
+      "north"
+    ],
+    "image": "dishes/Lauki Chana Dal Sabzi with Roti.jpg"
+  },
+  {
+    "name": "palak dal with jeera rice",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "muscle gain",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "iron-rich dal meal with moderate carbs",
+    "regions": [
+      "north"
+    ],
+    "image": "dishes/Palak Dal with Jeera Rice.jpg"
+  },
+  {
+    "name": "rajma with brown rice",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "hearty North Indian lunch for active patients",
+    "regions": [
+      "north"
+    ],
+    "image": "dishes/Rajma with Brown Rice.jpg"
+  },
+  {
+    "name": "chole with phulka",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "protein and fiber combination when digestion allows",
+    "regions": [
+      "north"
+    ],
+    "image": "dishes/Chole with Phulka.jpg"
+  },
+  {
+    "name": "sambar rice with mixed vegetables",
+    "dosha": [
+      "pitta",
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "comforting one-pot South Indian meal",
+    "regions": [
+      "south"
+    ],
+    "image": "dishes/Sambar Rice with Mixed Vegetables.jpg"
+  },
+  {
+    "name": "curd rice with cucumber",
+    "dosha": [
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "cooling option for pitta in warm weather",
+    "regions": [
+      "south"
+    ],
+    "image": "dishes/Curd Rice with Cucumber.jpg"
   },
   {
     "name": "coriander rice with vegetables",
-    "dosha": ["pitta"],
-    "goals": ["general wellness", "better digestion"],
-    "mealTypes": ["lunch"],
-    "notes": "cooling lunch option"
+    "dosha": [
+      "pitta"
+    ],
+    "goals": [
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "cooling lunch option",
+    "image": "dishes/Coriander Rice with Vegetables.jpg"
   },
   {
-    "name": "idli with coconut chutney",
-    "dosha": ["pitta", "vata"],
-    "goals": ["better digestion", "general wellness"],
-    "mealTypes": ["breakfast"],
-    "notes": "soft fermented breakfast"
+    "name": "quinoa moong salad bowl",
+    "dosha": [
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "high-protein modern bowl with Indian flavors",
+    "image": "dishes/Quinoa Moong Salad Bowl.jpg"
+  },
+  {
+    "name": "vegetable sattu paratha with curd",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch"
+    ],
+    "notes": "Bihar-inspired filling meal for higher energy needs",
+    "regions": [
+      "east"
+    ],
+    "image": "dishes/Vegetable Sattu Paratha with Curd.jpg"
+  },
+  {
+    "name": "bajra roti with mixed veg sabzi",
+    "dosha": [
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "rural Indian staple with good satiety and fiber",
+    "regions": [
+      "west"
+    ],
+    "image": "dishes/Bajra Roti with Mixed Veg Sabzi.jpg"
+  },
+  {
+    "name": "jowar roti with tur dal",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "balanced local meal for regular use",
+    "image": "dishes/Jowar Roti with Tur Dal.jpg"
+  },
+  {
+    "name": "moong soup",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "light evening meal",
+    "image": "dishes/Moong Soup.jpg"
+  },
+  {
+    "name": "bottle gourd soup",
+    "dosha": [
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "cooling and light",
+    "image": "dishes/Bottle Gourd Soup.jpg"
+  },
+  {
+    "name": "tomato carrot soup with moong chilla",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "light dinner with better protein support",
+    "image": "dishes/Tomato Carrot Soup with Moong Chilla.jpg"
+  },
+  {
+    "name": "vegetable clear soup with tofu",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "low-fat, high-protein option for late meals",
+    "image": "dishes/Vegetable Clear Soup with Tofu.jpg"
+  },
+  {
+    "name": "sauteed paneer and vegetables",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "higher protein vegetarian dinner",
+    "image": "dishes/Sauteed Paneer and Vegetables.jpg"
+  },
+  {
+    "name": "dal palak soup with millet crackers",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "better digestion",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "easy evening meal for digestion-focused plans",
+    "image": "dishes/Dal Palak Soup with Millet Crackers.jpg"
+  },
+  {
+    "name": "lemon coriander vegetable soup",
+    "dosha": [
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "light aromatic soup for low appetite evenings",
+    "image": "dishes/Lemon Coriander Vegetable Soup.jpg"
+  },
+  {
+    "name": "banana date smoothie bowl",
+    "dosha": [
+      "vata"
+    ],
+    "goals": [
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "calorie-dense and strengthening",
+    "image": "dishes/Banana Date Smoothie Bowl.jpg"
+  },
+  {
+    "name": "peanut banana overnight oats",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "higher calorie breakfast for weight gain goals",
+    "image": "dishes/Peanut Banana Overnight Oats.jpg"
+  },
+  {
+    "name": "sweet potato chaat with curd",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch"
+    ],
+    "notes": "familiar street-style flavor in a cleaner form",
+    "image": "dishes/Sweet Potato Chaat with Curd.jpg"
+  },
+  {
+    "name": "methi thepla with curd",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch"
+    ],
+    "notes": "Gujarati home-style meal, easy for travel days",
+    "regions": [
+      "west"
+    ],
+    "image": "dishes/Methi Thepla with Curd.jpg"
+  },
+  {
+    "name": "vegetable semiya upma",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "quick South Indian style breakfast",
+    "regions": [
+      "south"
+    ],
+    "image": "dishes/Vegetable Semiya Upma.jpg"
+  },
+  {
+    "name": "masoor dal with lauki sabzi",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "simple weekday meal for easy adherence",
+    "image": "dishes/Masoor Dal with Lauki Sabzi.jpg"
+  },
+  {
+    "name": "tur dal with ridge gourd sabzi",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "light traditional combo for digestive comfort"
+  },
+  {
+    "name": "kodo millet khichdi",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "millet-based local khichdi for variety"
+  },
+  {
+    "name": "curd with roasted chana and cucumber",
+    "dosha": [
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "cooling, protein-supportive quick meal"
+  },
+  {
+    "name": "adrai garlic vegetable stew with dal",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "warming stew style for cooler climates"
+  },
+  {
+    "name": "light fish curry with red rice",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "coastal Indian non-veg option with moderate spice",
+    "regions": [
+      "south",
+      "east"
+    ]
+  },
+  {
+    "name": "egg bhurji with multigrain toast",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "muscle gain",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "quick high-protein option when non-veg is allowed"
+  },
+  {
+    "name": "chicken stew with vegetables",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "gentle non-veg protein option for recovery"
+  },
+  {
+    "name": "kanda poha",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "light onion poha for everyday local breakfast",
+    "image": "dishes/kanda-poha.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "ragi dosa with chutney",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "fiber-rich fermented dosa style meal",
+    "image": "dishes/ragi-dosa-with-chutney.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "moong dal chilla",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "simple protein-rich crepe for good adherence",
+    "image": "dishes/moong-dal-chilla.jpg",
+    "regions": [
+      "north",
+      "west"
+    ]
+  },
+  {
+    "name": "parboiled red rice kanji",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "traditional light rice gruel, soothing for gut",
+    "image": "dishes/parboiled-red-rice-kanji.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "oats vegetable cheela",
+    "dosha": [
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness",
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "quick high-fiber savory cheela option",
+    "image": "dishes/oats-vegetable-cheela.jpg",
+    "regions": [
+      "north",
+      "west"
+    ]
+  },
+  {
+    "name": "sprouts usal",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch"
+    ],
+    "notes": "Maharashtrian sprout preparation with protein boost",
+    "image": "dishes/sprouts-usal.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "steamed muthia",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "snack"
+    ],
+    "notes": "steamed Gujarati snack, light and filling",
+    "image": "dishes/steamed-muthia.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "jowar roti with mixed veg",
+    "dosha": [
+      "kapha",
+      "vata",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "balanced local lunch with millet flatbread",
+    "image": "dishes/jowar-roti-with-mixed-veg.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "bajra roti with lauki sabzi",
+    "dosha": [
+      "kapha",
+      "vata",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "high-fiber millet roti with light gourd curry",
+    "image": "dishes/bajra-roti-with-lauki-sabzi.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "phulka with palak dal",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "muscle gain",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "iron-supportive dal combo with easy digestibility",
+    "image": "dishes/phulka-with-palak-dal.jpg",
+    "regions": [
+      "north"
+    ]
+  },
+  {
+    "name": "masoor dal with bhindi",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "general wellness",
+      "better digestion",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "weekday-friendly dal and okra pairing",
+    "image": "dishes/masoor-dal-with-bhindi.jpg",
+    "regions": [
+      "north"
+    ]
+  },
+  {
+    "name": "kadhi with steamed rice",
+    "dosha": [
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "comforting, lighter curry-rice option",
+    "image": "dishes/kadhi-with-steamed-rice.jpg",
+    "regions": [
+      "north",
+      "west"
+    ]
+  },
+  {
+    "name": "tomato carrot soup",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "weight loss",
+      "better digestion",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "light antioxidant-rich evening soup",
+    "image": "dishes/tomato-carrot-soup.jpg"
+  },
+  {
+    "name": "tofu bhurji",
+    "dosha": [
+      "kapha",
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "muscle gain",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch",
+      "dinner"
+    ],
+    "notes": "high-protein plant-based scramble",
+    "image": "dishes/tofu-bhurji.jpg"
+  },
+  {
+    "name": "light vegetable stew",
+    "dosha": [
+      "pitta",
+      "vata",
+      "kapha"
+    ],
+    "goals": [
+      "better digestion",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "gentle one-pot meal for low appetite days",
+    "image": "dishes/light-vegetable-stew.jpg"
+  },
+  {
+    "name": "jeera lauki soup",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "cumin-flavored bottle gourd soup for digestion",
+    "image": "dishes/jeera-lauki-soup.jpg"
+  },
+  {
+    "name": "mixed veg stew with moong",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "protein-supported veg stew for stable energy",
+    "image": "dishes/mixed-veg-stew-with-moong.jpg"
+  },
+  {
+    "name": "egg curry with red rice",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "non-veg protein option with moderate carbs",
+    "image": "dishes/egg-curry-with-red-rice.jpg",
+    "regions": [
+      "south",
+      "east"
+    ]
+  },
+  {
+    "name": "grilled fish with sauteed vegetables",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "muscle gain",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "high-protein coastal style plate with light sides",
+    "image": "dishes/grilled-fish-with-sauteed-vegetables.jpg",
+    "regions": [
+      "south",
+      "east"
+    ]
+  },
+  {
+    "name": "chicken saag with jowar roti",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "hearty non-veg meal with greens and millet",
+    "image": "dishes/chicken-saag-with-jowar-roti.jpg",
+    "regions": [
+      "north"
+    ]
+  },
+  {
+    "name": "chicken clear soup",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "better digestion",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "dinner"
+    ],
+    "notes": "light recovery soup for low appetite evenings",
+    "image": "dishes/chicken-clear-soup.jpg",
+    "regions": [
+      "pan_india"
+    ]
+  },
+  {
+    "name": "kerala-style vegetable avial",
+    "dosha": [
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "general wellness",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "South Indian mixed vegetable curry with light coconut",
+    "image": "dishes/kerala-style-vegetable-avial-light-coconut.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "pesarattu green moong dosa",
+    "dosha": [
+      "kapha",
+      "vata",
+      "pitta"
+    ],
+    "goals": [
+      "weight loss",
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "dinner"
+    ],
+    "notes": "Andhra green gram dosa with better protein profile",
+    "image": "dishes/pesarattu-green-moong-dosa.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "ragi mudde with sambar",
+    "dosha": [
+      "kapha",
+      "vata",
+      "pitta"
+    ],
+    "goals": [
+      "general wellness",
+      "weight loss",
+      "muscle gain"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "Karnataka staple with good satiety and fiber",
+    "image": "dishes/ragi-mudde-with-sambar.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "methi thepla with curd",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "general wellness",
+      "muscle gain",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "breakfast",
+      "lunch"
+    ],
+    "notes": "Gujarati-style travel-friendly meal with practical adherence",
+    "image": "dishes/Methi Thepla with Curd.jpg",
+    "regions": [
+      "west"
+    ]
+  },
+  {
+    "name": "vegetable semiya upma",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "general wellness",
+      "weight loss",
+      "better digestion"
+    ],
+    "mealTypes": [
+      "breakfast"
+    ],
+    "notes": "quick South Indian vermicelli breakfast for weekday rotation",
+    "image": "dishes/Vegetable Semiya Upma.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "curd rice with cucumber",
+    "dosha": [
+      "pitta",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "cooling, familiar meal for warm weather and pitta-prone cases",
+    "image": "dishes/Curd Rice with Cucumber.jpg",
+    "regions": [
+      "south"
+    ]
+  },
+  {
+    "name": "vegetable sattu paratha with curd",
+    "dosha": [
+      "vata",
+      "kapha",
+      "pitta"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "filling Bihar-style local meal for higher activity plans",
+    "image": "dishes/Vegetable Sattu Paratha with Curd.jpg",
+    "regions": [
+      "east"
+    ]
+  },
+  {
+    "name": "light fish curry with red rice",
+    "dosha": [
+      "vata",
+      "pitta",
+      "kapha"
+    ],
+    "goals": [
+      "muscle gain",
+      "general wellness",
+      "weight loss"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "coastal non-veg option with moderate spice and balanced carbs",
+    "image": "dishes/grilled-fish-with-sauteed-vegetables.jpg",
+    "regions": [
+      "south",
+      "east"
+    ]
+  },
+  {
+    "name": "lauki chana dal sabzi with roti",
+    "dosha": [
+      "pitta",
+      "kapha",
+      "vata"
+    ],
+    "goals": [
+      "better digestion",
+      "weight loss",
+      "general wellness"
+    ],
+    "mealTypes": [
+      "lunch",
+      "dinner"
+    ],
+    "notes": "simple household combo with good digestion support",
+    "image": "dishes/Lauki Chana Dal Sabzi with Roti.jpg",
+    "regions": [
+      "north"
+    ]
   }
 ]

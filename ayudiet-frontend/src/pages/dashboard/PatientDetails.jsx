@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchJson } from "../../services/api";
+import { updatePatient } from "../../services/patient.service";
 import {
   createProgressLog,
   fetchProgressLogs,
@@ -11,6 +12,7 @@ import {
   fetchPlansByPatient,
   generatePlanFromBackend,
   generatePersonalizedMeals,
+  generateSlotChart,
   updatePlan,
 } from "../../services/plan.service";
 import usePlansStore from "../../store/plansStore";
@@ -25,12 +27,40 @@ import { generateProgressExplanation } from "@/utils/explainEngine";
 import { autoImprovePlan } from "@/utils/autoImprovePlanEngine";
 import { resolveApiAssetUrl } from "../../utils/apiBaseUrl";
 
-const createMealDay = (index) => ({
-  day: `Day ${index + 1}`,
-  breakfast: "",
-  lunch: "",
-  dinner: "",
-});
+const PLAN_SLOT_CONFIG = [
+  { key: "earlyMorning", icon: "Dawn", label: "Early Morning" },
+  { key: "morning", icon: "Cup", label: "Morning" },
+  { key: "afterExercise", icon: "Move", label: "After Exercise" },
+  { key: "breakfast", icon: "Sunrise", label: "Breakfast", library: true },
+  { key: "midMorning", icon: "Fruit", label: "Mid Morning" },
+  { key: "lunch", icon: "Sun", label: "Lunch", library: true },
+  { key: "after2Hours", icon: "Glass", label: "After 2 Hrs" },
+  { key: "evening", icon: "Tea", label: "Evening" },
+  { key: "lateEvening", icon: "Dusk", label: "Late Evening" },
+  { key: "dinner", icon: "Moon", label: "Dinner", library: true },
+  { key: "bedTime", icon: "Night", label: "Bed Time" },
+];
+
+const PLAN_SLOT_KEYS = PLAN_SLOT_CONFIG.map((slot) => slot.key);
+const CORE_MEAL_KEYS = ["breakfast", "lunch", "dinner"];
+
+const createMealDay = (index) => {
+  const day = { day: `Day ${index + 1}` };
+  PLAN_SLOT_KEYS.forEach((key) => {
+    day[key] = "";
+  });
+  return day;
+};
+
+const normalizeMealDayWithSlots = (meal = {}, index = 0) => {
+  const normalized = {
+    day: String(meal?.day || `Day ${index + 1}`).trim() || `Day ${index + 1}`,
+  };
+  PLAN_SLOT_KEYS.forEach((key) => {
+    normalized[key] = String(meal?.[key] || "").trim();
+  });
+  return normalized;
+};
 
 const DEFAULT_PLAN_DAYS = 7;
 
@@ -94,6 +124,67 @@ const formatDateTimeDayMonthYear = (value) => {
     hour12: true,
   }).format(parsed);
 };
+const getMealTimingDraftFromPatient = (patient = null) => {
+  const mealTimings = patient?.planningInputs?.mealTimings || {};
+  return {
+    wakeUpTime: String(mealTimings?.wakeUpTime || "").trim(),
+    breakfastTime: String(mealTimings?.breakfastTime || "").trim(),
+    lunchTime: String(mealTimings?.lunchTime || "").trim(),
+    eveningSnackTime: String(mealTimings?.eveningSnackTime || "").trim(),
+    dinnerTime: String(mealTimings?.dinnerTime || "").trim(),
+    bedTime: String(mealTimings?.bedTime || "").trim(),
+  };
+};
+
+const suggestMealTimings = (patient = {}, goal = "") => {
+  const planningInputs = patient?.planningInputs || {};
+  const mealPattern = String(planningInputs?.mealPattern || "").toLowerCase();
+  const goalText = String(goal || planningInputs?.primaryGoal || "").toLowerCase();
+  const isWeightLossLike =
+    goalText.includes("weight loss") ||
+    goalText.includes("diabetes") ||
+    goalText.includes("pcos") ||
+    goalText.includes("hypertension");
+  const isMuscleGainLike = goalText.includes("muscle") || goalText.includes("weight gain");
+
+  const base = {
+    wakeUpTime: "06:30",
+    breakfastTime: "08:30",
+    lunchTime: "13:00",
+    eveningSnackTime: "17:30",
+    dinnerTime: "20:00",
+    bedTime: "22:30",
+  };
+
+  if (mealPattern.includes("intermittent")) {
+    return {
+      ...base,
+      breakfastTime: "10:00",
+      lunchTime: "14:00",
+      eveningSnackTime: "18:00",
+      dinnerTime: "20:30",
+    };
+  }
+
+  if (isWeightLossLike) {
+    return {
+      ...base,
+      dinnerTime: "19:30",
+      bedTime: "22:00",
+    };
+  }
+
+  if (isMuscleGainLike) {
+    return {
+      ...base,
+      eveningSnackTime: "17:00",
+      dinnerTime: "20:30",
+      bedTime: "23:00",
+    };
+  }
+
+  return base;
+};
 const resolvePatientPhotoUrl = (patient = {}) => {
   const raw = String(patient?.photo?.url || "").trim();
   return resolveApiAssetUrl(raw);
@@ -107,6 +198,12 @@ const getPatientInitials = (name = "") => {
 const LOW_ADHERENCE_SCORE = 30;
 const HIGH_ADHERENCE_SCORE = 100;
 const getPlanDraftStorageKey = (patientId) => `dietPlanDraft:${patientId}`;
+const getPlanTimestamp = (plan = {}) => {
+  const createdAtMs = new Date(plan?.createdAt || 0).getTime();
+  if (Number.isFinite(createdAtMs) && createdAtMs > 0) return createdAtMs;
+  const updatedAtMs = new Date(plan?.updatedAt || 0).getTime();
+  return Number.isFinite(updatedAtMs) ? updatedAtMs : 0;
+};
 
 const normalizeAdherenceValue = (value) => {
   if (typeof value === "number" && !Number.isNaN(value)) {
@@ -127,6 +224,92 @@ const sanitizeGeneratedMealText = (value = "") =>
     .replace(/\s+/g, " ")
     .trim();
 const hasPortionHint = (value = "") => /\bportion\s*:/i.test(String(value));
+const DEFAULT_SLOT_ROTATION = {
+  breakfast: [
+    "vegetable daliya",
+    "millet upma with vegetables",
+    "idli with sambar",
+    "besan chilla with mint chutney",
+    "oats with soaked almonds",
+    "stewed apples with cinnamon",
+  ],
+  lunch: [
+    "vegetable millet bowl",
+    "lauki chana dal sabzi with roti",
+    "palak dal with jeera rice",
+    "jowar roti with tur dal",
+  ],
+  dinner: [
+    "moong soup",
+    "bottle gourd soup",
+    "tomato carrot soup with moong chilla",
+    "dal palak soup with millet crackers",
+  ],
+};
+const normalizeMealKey = (value = "") =>
+  sanitizeGeneratedMealText(String(value || ""))
+    .toLowerCase()
+    .split("|")[0]
+    .split(/[–—-]/)[0]
+    .replace(/\s+/g, " ")
+    .trim();
+
+const buildSlotOptions = (foods = [], slot = "breakfast") => {
+  const fromFoods = Array.isArray(foods)
+    ? foods
+        .filter((food) => Array.isArray(food?.mealTypes) && food.mealTypes.includes(slot))
+        .map((food) => String(food?.name || "").trim())
+        .filter(Boolean)
+    : [];
+  const fallback = DEFAULT_SLOT_ROTATION[slot] || [];
+  return [...new Set([...fromFoods, ...fallback])];
+};
+
+const diversifyGeneratedMeals = (meals = [], foods = []) => {
+  if (!Array.isArray(meals) || meals.length <= 1) {
+    return meals;
+  }
+
+  const slotOptions = {
+    breakfast: buildSlotOptions(foods, "breakfast"),
+    lunch: buildSlotOptions(foods, "lunch"),
+    dinner: buildSlotOptions(foods, "dinner"),
+  };
+  const seenBySlot = {
+    breakfast: new Set(),
+    lunch: new Set(),
+    dinner: new Set(),
+  };
+
+  return meals.map((mealDay, dayIndex) => {
+    const next = { ...mealDay };
+
+    ["breakfast", "lunch", "dinner"].forEach((slot, slotIndex) => {
+      const raw = String(next?.[slot] || "").trim();
+      const key = normalizeMealKey(raw);
+      const alreadySeen = key && seenBySlot[slot].has(key);
+
+      if (!alreadySeen) {
+        if (key) seenBySlot[slot].add(key);
+        return;
+      }
+
+      const options = slotOptions[slot];
+      for (let step = 0; step < options.length; step += 1) {
+        const candidate = options[(dayIndex + slotIndex + step) % options.length];
+        const candidateKey = normalizeMealKey(candidate);
+        if (!candidateKey || seenBySlot[slot].has(candidateKey)) {
+          continue;
+        }
+        next[slot] = candidate;
+        seenBySlot[slot].add(candidateKey);
+        return;
+      }
+    });
+
+    return next;
+  });
+};
 
 const buildAiPatientContext = (patient = {}, goal = "", dosha = "", progressLogs = []) => {
   const orderedLogs = Array.isArray(progressLogs)
@@ -275,6 +458,10 @@ function PatientDetails() {
     recordedAt: getCurrentDateTimeLocal(),
   });
   const [toast, setToast] = useState("");
+  const [mealTimingDraft, setMealTimingDraft] = useState(
+    getMealTimingDraftFromPatient(null)
+  );
+  const [savingMealTimings, setSavingMealTimings] = useState(false);
   const [progressPage, setProgressPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const PROGRESS_LOGS_PER_PAGE = 2;
@@ -392,7 +579,14 @@ function PatientDetails() {
   const upsertPatientPlan = usePlansStore((state) => state.upsertPatientPlan);
 
   const visiblePlans = useMemo(() => plans || [], [plans]);
-  const activePlan = visiblePlans.find((plan) => plan.isActive) || null;
+  const mealTimings = mealTimingDraft;
+  const activePlan = useMemo(() => {
+    const activePlans = visiblePlans.filter((plan) => plan?.isActive);
+    if (!activePlans.length) return null;
+
+    // Always show the latest active plan, independent of currently edited goal.
+    return [...activePlans].sort((left, right) => getPlanTimestamp(right) - getPlanTimestamp(left))[0];
+  }, [visiblePlans]);
   const loading = patientLoading || plansLoading;
   const builderValidation = useMemo(
     () => validatePlan(activeDays, dosha),
@@ -591,6 +785,7 @@ function PatientDetails() {
     setEditingPlanId(plan._id);
     setTitle(plan.title || "");
     setIsTitleManuallyEdited(true);
+    setGoal(String(plan.goal || patient?.planningInputs?.primaryGoal || "").trim());
     setDosha(plan.doshaType || "");
     setDate(
       plan.reviewDueDate
@@ -598,12 +793,7 @@ function PatientDetails() {
         : ""
     );
     const planDays = plan.meals?.length
-      ? plan.meals.map((meal, index) => ({
-          day: meal.day || `Day ${index + 1}`,
-          breakfast: meal.breakfast || "",
-          lunch: meal.lunch || "",
-          dinner: meal.dinner || "",
-        }))
+      ? plan.meals.map((meal, index) => normalizeMealDayWithSlots(meal, index))
       : createInitialMealDays();
     setManualDays(planDays);
     setAiDays(createInitialMealDays(planDays.length || DEFAULT_PLAN_DAYS));
@@ -623,7 +813,8 @@ function PatientDetails() {
     );
   };
 
-  const applyGeneratedDietPlanToBuilder = (dietPlan) => {
+  const applyGeneratedDietPlanToBuilder = (dietPlan, options = {}) => {
+    const { mergeOnlyNonCore = false } = options;
     if (!dietPlan) {
       return;
     }
@@ -635,21 +826,50 @@ function PatientDetails() {
 
       if (Array.isArray(dietPlan)) {
         for (let index = 0; index < nextDays.length; index += 1) {
-          const meal = dietPlan[index] || dietPlan[dietPlan.length - 1] || {};
+          const sourceDay =
+            dietPlan[index] ||
+            (dietPlan.length ? dietPlan[index % dietPlan.length] : null) ||
+            {};
+          const normalizedSource = normalizeMealDayWithSlots(sourceDay, index);
           nextDays[index] = {
-            ...nextDays[index],
-            breakfast: ensureMealHasPortion("breakfast", meal.breakfast || ""),
-            lunch: ensureMealHasPortion("lunch", meal.lunch || ""),
-            dinner: ensureMealHasPortion("dinner", meal.dinner || ""),
+            ...normalizeMealDayWithSlots(nextDays[index], index),
+            ...(mergeOnlyNonCore
+              ? {}
+              : {
+                  breakfast: ensureMealHasPortion(
+                    "breakfast",
+                    normalizedSource.breakfast || ""
+                  ),
+                  lunch: ensureMealHasPortion("lunch", normalizedSource.lunch || ""),
+                  dinner: ensureMealHasPortion("dinner", normalizedSource.dinner || ""),
+                }),
+            ...PLAN_SLOT_KEYS.reduce((acc, key) => {
+              if (CORE_MEAL_KEYS.includes(key)) return acc;
+              acc[key] = normalizedSource[key] || "";
+              return acc;
+            }, {}),
           };
         }
       } else {
+        const normalizedSource = normalizeMealDayWithSlots(dietPlan, 0);
         for (let index = 0; index < nextDays.length; index += 1) {
           nextDays[index] = {
-            ...nextDays[index],
-            breakfast: ensureMealHasPortion("breakfast", dietPlan.breakfast || ""),
-            lunch: ensureMealHasPortion("lunch", dietPlan.lunch || ""),
-            dinner: ensureMealHasPortion("dinner", dietPlan.dinner || ""),
+            ...normalizeMealDayWithSlots(nextDays[index], index),
+            ...(mergeOnlyNonCore
+              ? {}
+              : {
+                  breakfast: ensureMealHasPortion(
+                    "breakfast",
+                    normalizedSource.breakfast || ""
+                  ),
+                  lunch: ensureMealHasPortion("lunch", normalizedSource.lunch || ""),
+                  dinner: ensureMealHasPortion("dinner", normalizedSource.dinner || ""),
+                }),
+            ...PLAN_SLOT_KEYS.reduce((acc, key) => {
+              if (CORE_MEAL_KEYS.includes(key)) return acc;
+              acc[key] = normalizedSource[key] || "";
+              return acc;
+            }, {}),
           };
         }
       }
@@ -695,6 +915,87 @@ function PatientDetails() {
   const showToast = (message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2500);
+  };
+
+  const handleTimingFieldChange = (field, value) => {
+    setMealTimingDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const persistMealTimings = async (nextDraft, options = {}) => {
+    const { showSuccessToast = true } = options;
+    if (!patient?._id) {
+      return false;
+    }
+
+    try {
+      setSavingMealTimings(true);
+      const existingPlanningInputs =
+        patient?.planningInputs && typeof patient.planningInputs === "object"
+          ? patient.planningInputs
+          : {};
+      const nextPlanningInputs = {
+        ...existingPlanningInputs,
+        mealTimings: {
+          wakeUpTime: nextDraft.wakeUpTime || undefined,
+          breakfastTime: nextDraft.breakfastTime || undefined,
+          lunchTime: nextDraft.lunchTime || undefined,
+          eveningSnackTime: nextDraft.eveningSnackTime || undefined,
+          dinnerTime: nextDraft.dinnerTime || undefined,
+          bedTime: nextDraft.bedTime || undefined,
+        },
+      };
+
+      const updated = await updatePatient(patient._id, {
+        planningInputs: nextPlanningInputs,
+      });
+      setPatient(updated || patient);
+      setMealTimingDraft(getMealTimingDraftFromPatient(updated || patient));
+      if (showSuccessToast) {
+        showToast("Meal timings saved");
+      }
+      return true;
+    } catch (error) {
+      console.error("Error saving meal timings:", error);
+      if (showSuccessToast) {
+        alert(error.message || "Unable to save meal timings.");
+      }
+      return false;
+    } finally {
+      setSavingMealTimings(false);
+    }
+  };
+
+  const handleSaveMealTimings = async () => {
+    await persistMealTimings(mealTimingDraft, { showSuccessToast: true });
+  };
+
+  const autoFillMealTimingsAfterAi = async () => {
+    const suggested = suggestMealTimings(patient, goal);
+    const merged = {
+      ...mealTimingDraft,
+    };
+    let changed = false;
+
+    Object.keys(suggested).forEach((key) => {
+      const currentValue = String(merged[key] || "").trim();
+      if (!currentValue) {
+        merged[key] = suggested[key];
+        changed = true;
+      }
+    });
+
+    if (!changed) {
+      return;
+    }
+
+    setMealTimingDraft(merged);
+    const saved = await persistMealTimings(merged, { showSuccessToast: false });
+    if (saved) {
+      showToast("AI generated plan and suggested meal timings");
+    }
   };
 
   const fetchProgress = useCallback(async () => {
@@ -766,8 +1067,16 @@ function PatientDetails() {
       const restoredAiDays = Array.isArray(draft.aiDays) && draft.aiDays.length
         ? draft.aiDays
         : createInitialMealDays(restoredManualDays.length || DEFAULT_PLAN_DAYS);
-      setManualDays(restoredManualDays);
-      setAiDays(restoredAiDays);
+      setManualDays(
+        restoredManualDays.map((mealDay, index) =>
+          normalizeMealDayWithSlots(mealDay, index)
+        )
+      );
+      setAiDays(
+        restoredAiDays.map((mealDay, index) =>
+          normalizeMealDayWithSlots(mealDay, index)
+        )
+      );
       setBuilderMode(draft.builderMode || "manual");
       setSelectedDayIndex(typeof draft.selectedDayIndex === "number" ? draft.selectedDayIndex : 0);
     } catch (error) {
@@ -833,6 +1142,7 @@ function PatientDetails() {
           patientId: id,
           goal: goal.trim(),
           doshaType: dosha || "vata",
+          totalDays: aiDays.length || DEFAULT_PLAN_DAYS,
         });
 
         const meals = Array.isArray(mealsResponse?.meals)
@@ -843,8 +1153,11 @@ function PatientDetails() {
               dinner: sanitizeGeneratedMealText(meal?.dinner || ""),
             }))
           : null;
+        const diversifiedMeals = Array.isArray(meals)
+          ? diversifyGeneratedMeals(meals, mealsResponse?.foods)
+          : null;
 
-        if (meals && meals.length) {
+        if (diversifiedMeals && diversifiedMeals.length) {
           const generationSource = String(
             mealsResponse?.generationSource || "unknown"
           ).toLowerCase();
@@ -854,10 +1167,24 @@ function PatientDetails() {
             ? String(mealsResponse.generationFallbackReason)
             : "none";
           setAutoFixChanges([]);
-          applyGeneratedDietPlanToBuilder(meals);
+          applyGeneratedDietPlanToBuilder(diversifiedMeals);
+          try {
+            const slotChartResponse = await generateSlotChart({
+              patientId: id,
+              doshaType: dosha || "vata",
+              baseMeals: diversifiedMeals,
+            });
+            if (Array.isArray(slotChartResponse?.slotPlans) && slotChartResponse.slotPlans.length) {
+              applyGeneratedDietPlanToBuilder(slotChartResponse.slotPlans, {
+                mergeOnlyNonCore: true,
+              });
+            }
+          } catch (slotError) {
+            console.warn("Slot chart generation failed for personalized meals:", slotError);
+          }
           setBuilderMode("ai");
           setSelectedDayIndex(0);
-          setGeneratedDietPlan(meals[0]);
+          setGeneratedDietPlan(diversifiedMeals[0]);
           setIsGeneratedPlanLowConfidence(false);
           setGeneratedPlanTrend("stable");
           setGeneratedPlanTrendConfidence(0.8);
@@ -898,6 +1225,7 @@ function PatientDetails() {
             `Generation source: ${generationSource}`,
             ...(usedFallback ? [`Fallback reason: ${fallbackReason}`] : []),
           ]);
+          await autoFillMealTimingsAfterAi();
           showToast(
             usedFallback
               ? `Generated using fallback mode (${fallbackReason}).`
@@ -965,6 +1293,23 @@ function PatientDetails() {
           : formatted.dietPlan
       );
       applyGeneratedDietPlanToBuilder(formatted.dietPlan);
+      try {
+        const baseMealsForSlots = Array.isArray(formatted.dietPlan)
+          ? formatted.dietPlan
+          : [formatted.dietPlan];
+        const slotChartResponse = await generateSlotChart({
+          patientId: id,
+          doshaType: dosha || "vata",
+          baseMeals: baseMealsForSlots,
+        });
+        if (Array.isArray(slotChartResponse?.slotPlans) && slotChartResponse.slotPlans.length) {
+          applyGeneratedDietPlanToBuilder(slotChartResponse.slotPlans, {
+            mergeOnlyNonCore: true,
+          });
+        }
+      } catch (slotError) {
+        console.warn("Slot chart generation failed for profile analysis:", slotError);
+      }
       setBuilderMode("ai");
       setSelectedDayIndex(0);
       setGeneratedPlanTrend(trend);
@@ -989,6 +1334,7 @@ function PatientDetails() {
         `Trend confidence: ${Math.round(trendConfidence * 100)}%`,
         confidenceLabel,
       ]);
+      await autoFillMealTimingsAfterAi();
       if (useSafeBaseline) {
         showToast("Safe baseline plan generated (low-confidence AI response).");
       } else {
@@ -1150,19 +1496,22 @@ function PatientDetails() {
 
   async function handleSubmitPlan() {
     const reviewDueDateIso = toIsoDateTimeValue(date);
-    const normalizedDays = activeDays.map((day, index) => ({
-      day: day.day.trim() || `Day ${index + 1}`,
-      breakfast: day.breakfast.trim(),
-      lunch: day.lunch.trim(),
-      dinner: day.dinner.trim(),
-    }));
+    const normalizedDays = activeDays.map((day, index) => {
+      const normalized = {
+        day: String(day?.day || `Day ${index + 1}`).trim() || `Day ${index + 1}`,
+      };
+      PLAN_SLOT_KEYS.forEach((slotKey) => {
+        normalized[slotKey] = String(day?.[slotKey] || "").trim();
+      });
+      return normalized;
+    });
 
-    const hasInvalidDay = normalizedDays.some(
-      (day) => !day.breakfast && !day.lunch && !day.dinner
+    const hasInvalidDay = normalizedDays.some((day) =>
+      PLAN_SLOT_KEYS.every((slotKey) => !String(day?.[slotKey] || "").trim())
     );
 
-    if (!title.trim() || !dosha || !reviewDueDateIso) {
-      alert("Title, dosha type, and review date are required");
+    if (!title.trim() || !goal.trim() || !dosha || !reviewDueDateIso) {
+      alert("Title, goal, dosha type, and review date are required");
       return;
     }
 
@@ -1175,6 +1524,7 @@ function PatientDetails() {
       if (editingPlanId) {
         const updatedPlan = await updatePlan(editingPlanId, {
           title: title.trim(),
+          goal: goal.trim(),
           doshaType: dosha,
           reviewDueDate: reviewDueDateIso,
           meals: normalizedDays,
@@ -1185,6 +1535,7 @@ function PatientDetails() {
         const createdPlan = await createPlan({
           patient: id,
           title: title.trim(),
+          goal: goal.trim(),
           doshaType: dosha,
           reviewDueDate: reviewDueDateIso,
           meals: normalizedDays,
@@ -1217,6 +1568,8 @@ function PatientDetails() {
       await createProgressLog({
         patient: id,
         patientId: id,
+        planId: activePlan?._id || undefined,
+        goal: goal.trim() || activePlan?.goal || undefined,
         weight: Number(progressForm.weight),
         energy: Number(progressForm.energyLevel),
         energyLevel: Number(progressForm.energyLevel),
@@ -1311,6 +1664,8 @@ function PatientDetails() {
     if (!patient) {
       return;
     }
+
+    setMealTimingDraft(getMealTimingDraftFromPatient(patient));
 
     setProgressForm((current) => ({
       ...current,
@@ -1590,6 +1945,93 @@ function PatientDetails() {
                   ) : null}
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.15em] text-gray-500">
+                        Meal Timings
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleSaveMealTimings}
+                        disabled={savingMealTimings}
+                        className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-800 transition hover:bg-black hover:text-white disabled:opacity-60"
+                      >
+                        {savingMealTimings ? "Saving..." : "Save Timings"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      <label className="text-[11px] text-gray-600">
+                        Wake-up
+                        <input
+                          type="time"
+                          value={mealTimings.wakeUpTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("wakeUpTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-[11px] text-gray-600">
+                        Breakfast
+                        <input
+                          type="time"
+                          value={mealTimings.breakfastTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("breakfastTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-[11px] text-gray-600">
+                        Lunch
+                        <input
+                          type="time"
+                          value={mealTimings.lunchTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("lunchTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-[11px] text-gray-600">
+                        Evening Snack
+                        <input
+                          type="time"
+                          value={mealTimings.eveningSnackTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("eveningSnackTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-[11px] text-gray-600">
+                        Dinner
+                        <input
+                          type="time"
+                          value={mealTimings.dinnerTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("dinnerTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="text-[11px] text-gray-600">
+                        Bed Time
+                        <input
+                          type="time"
+                          value={mealTimings.bedTime}
+                          onChange={(event) =>
+                            handleTimingFieldChange("bedTime", event.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-2 text-[11px] text-gray-500">
+                      Saved timings are reused as default for all new plans.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <p className="mb-2 text-xs uppercase tracking-[0.15em] text-gray-500">
                       {builderMode === "ai" ? "Week Day Selector" : "Day Selector"}
                     </p>
@@ -1643,43 +2085,23 @@ function PatientDetails() {
                           )}
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <MealEditor
-                            icon="Sunrise"
-                            label="Breakfast"
-                            slotKey="breakfast"
-                            goal={goal}
-                            dosha={dosha}
-                            onChooseFromLibrary={() => openMealLibrary(index, "breakfast")}
-                            value={day.breakfast}
-                            onChange={(value) =>
-                              updateDayField(index, "breakfast", value)
-                            }
-                          />
-                          <MealEditor
-                            icon="Sun"
-                            label="Lunch"
-                            slotKey="lunch"
-                            goal={goal}
-                            dosha={dosha}
-                            onChooseFromLibrary={() => openMealLibrary(index, "lunch")}
-                            value={day.lunch}
-                            onChange={(value) =>
-                              updateDayField(index, "lunch", value)
-                            }
-                          />
-                          <MealEditor
-                            icon="Moon"
-                            label="Dinner"
-                            slotKey="dinner"
-                            goal={goal}
-                            dosha={dosha}
-                            onChooseFromLibrary={() => openMealLibrary(index, "dinner")}
-                            value={day.dinner}
-                            onChange={(value) =>
-                              updateDayField(index, "dinner", value)
-                            }
-                          />
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {PLAN_SLOT_CONFIG.map((slot) => (
+                            <MealEditor
+                              key={`${day.day}-${slot.key}`}
+                              icon={slot.icon}
+                              label={slot.label}
+                              value={day?.[slot.key] || ""}
+                              onChange={(value) =>
+                                updateDayField(index, slot.key, value)
+                              }
+                              onChooseFromLibrary={
+                                slot.library
+                                  ? () => openMealLibrary(index, slot.key)
+                                  : null
+                              }
+                            />
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -1961,6 +2383,14 @@ function PatientDetails() {
                 ? `${patient.planningInputs.waterIntakeLiters} L/day`
                 : "-"
             }
+          />
+          <Info
+            label="Budget Tier"
+            value={patient?.planningInputs?.budgetTier || "-"}
+          />
+          <Info
+            label="Local Region"
+            value={patient?.planningInputs?.localRegion || "pan_india"}
           />
         </Section>
 
@@ -2363,14 +2793,15 @@ function MealsList({ meals = [], compact = false }) {
           <h3 className="mb-4 text-lg font-semibold text-gray-900">
             {selectedMeal?.day || "Day Plan"}
           </h3>
-          <div className="grid gap-3 md:grid-cols-3">
-            <MealDisplay
-              icon="Sunrise"
-              label="Breakfast"
-              value={selectedMeal?.breakfast}
-            />
-            <MealDisplay icon="Sun" label="Lunch" value={selectedMeal?.lunch} />
-            <MealDisplay icon="Moon" label="Dinner" value={selectedMeal?.dinner} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {PLAN_SLOT_CONFIG.map((slot) => (
+              <MealDisplay
+                key={`${selectedMeal?.day || "day"}-${slot.key}`}
+                icon={slot.icon}
+                label={slot.label}
+                value={selectedMeal?.[slot.key]}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -2385,14 +2816,15 @@ function MealsList({ meals = [], compact = false }) {
           className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6"
         >
           <h3 className="mb-4 text-lg font-semibold text-gray-900">{mealDay.day}</h3>
-          <div className="grid gap-3 md:grid-cols-3">
-            <MealDisplay
-              icon="Sunrise"
-              label="Breakfast"
-              value={mealDay.breakfast}
-            />
-            <MealDisplay icon="Sun" label="Lunch" value={mealDay.lunch} />
-            <MealDisplay icon="Moon" label="Dinner" value={mealDay.dinner} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {PLAN_SLOT_CONFIG.map((slot) => (
+              <MealDisplay
+                key={`${mealDay.day}-${slot.key}`}
+                icon={slot.icon}
+                label={slot.label}
+                value={mealDay?.[slot.key]}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -2496,6 +2928,7 @@ function MealEditor({
   onChange,
   onChooseFromLibrary,
 }) {
+  const canChooseFromLibrary = typeof onChooseFromLibrary === "function";
   return (
     <div className="grid h-full grid-rows-[76px_112px] gap-4 rounded-2xl border border-gray-200 bg-[#fcfcfb] p-4">
       <div className="flex h-[76px] items-start justify-between gap-3">
@@ -2511,13 +2944,15 @@ function MealEditor({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onChooseFromLibrary}
-          className="inline-flex h-11 w-[92px] shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100"
-        >
-          Choose Dish
-        </button>
+        {canChooseFromLibrary ? (
+          <button
+            type="button"
+            onClick={onChooseFromLibrary}
+            className="inline-flex h-11 w-[92px] shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100"
+          >
+            Choose Dish
+          </button>
+        ) : null}
       </div>
 
       <textarea
