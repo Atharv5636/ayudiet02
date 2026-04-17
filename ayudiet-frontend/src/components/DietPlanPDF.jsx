@@ -365,7 +365,7 @@ export default function DietPlanPDF({
     doshaType: patient?.doshaType || "N/A",
     planTitle: patient?.planTitle || "Diet Plan",
     doctorName: patient?.doctorName || "Doctor",
-    clinicName: patient?.clinicName || "RIGHT HEALTH",
+    clinicName: patient?.clinicName || "AyuDiet",
     clinicMobile: patient?.clinicMobile || "",
     date: patient?.date || new Date().toISOString(),
     plan: toArray(patient?.plan),

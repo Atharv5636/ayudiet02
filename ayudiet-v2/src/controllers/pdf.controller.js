@@ -446,8 +446,7 @@ const drawRow = ({
 
 const drawHeader = ({ doc, patient, primaryFont, primaryLanguage = "en" }) => {
   const labels = HEADER_LABELS[primaryLanguage] || HEADER_LABELS.en;
-  const clinicTitle =
-    primaryLanguage === "mr" ? "राईट हेल्थ" : patient?.clinicName || "RIGHT HEALTH";
+  const clinicTitle = patient?.clinicName || "AyuDiet";
   const planTitleText =
     primaryLanguage === "mr" ? labels.planTitle : patient?.planTitle || labels.planTitle;
   const left = doc.page.margins.left;

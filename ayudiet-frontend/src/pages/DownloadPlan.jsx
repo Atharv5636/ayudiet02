@@ -406,7 +406,7 @@ function DownloadPlan() {
       planTitle: String(selectedPlan?.title || "Diet Chart").trim() || "Diet Chart",
       plan,
       doctorName: loggedInDoctorName,
-      clinicName: "RIGHT HEALTH",
+      clinicName: "AyuDiet",
       clinicMobile: loggedInDoctorMobile || DEFAULT_CLINIC_MOBILE,
       date: new Date().toISOString(),
       localRegion:
