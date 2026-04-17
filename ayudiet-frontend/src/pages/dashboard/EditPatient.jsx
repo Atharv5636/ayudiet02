@@ -941,6 +941,18 @@ function Input({ label, ...props }) {
 }
 
 function Select({ label, options, ...props }) {
+  const formatOptionLabel = (value) => {
+    const normalized = String(value || "").replace(/_/g, " ").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    return normalized
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
   return (
     <div>
       <label className="mb-1 block text-xs uppercase tracking-wide text-gray-400">
@@ -953,7 +965,7 @@ function Select({ label, options, ...props }) {
         <option value="">Select</option>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {formatOptionLabel(option)}
           </option>
         ))}
       </select>
