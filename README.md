@@ -93,18 +93,18 @@ The platform is organized as:
 
 ```mermaid
 flowchart LR
-    U[Doctor / Dietician] --> FE[Frontend App\nReact + Vite]
-    FE -->|Bearer JWT + REST| BE[Backend API\nExpress.js]
-    BE --> DB[(MongoDB Atlas\nMongoose)]
-    BE --> FS[/Local Upload Storage\nuploads/patient-docs\nuploads/patient-photos/]
-    BE --> PDF[PDF Generator\nPDFKit + Noto Fonts]
+    U["Doctor / Dietician"] --> FE["Frontend App<br/>React + Vite"]
+    FE -->|Bearer JWT + REST| BE["Backend API<br/>Express.js"]
+    BE --> DB[("MongoDB Atlas<br/>Mongoose")]
+    BE --> FS["Local Upload Storage<br/>uploads/patient-docs<br/>uploads/patient-photos"]
+    BE --> PDF["PDF Generator<br/>PDFKit + Noto Fonts"]
 
-    subgraph Frontend Modules
-      FE1[Auth UI]
-      FE2[Dashboard UI]
-      FE3[Patients UI]
-      FE4[Plans UI]
-      FE5[Progress UI]
+    subgraph FG["Frontend Modules"]
+      FE1["Auth UI"]
+      FE2["Dashboard UI"]
+      FE3["Patients UI"]
+      FE4["Plans UI"]
+      FE5["Progress UI"]
     end
 
     FE --- FE1
@@ -113,12 +113,12 @@ flowchart LR
     FE --- FE4
     FE --- FE5
 
-    subgraph Backend Route Groups
-      B1[/auth]
-      B2[/patients]
-      B3[/plans]
-      B4[/progress]
-      B5[/health]
+    subgraph BR["Backend Route Groups"]
+      B1["/auth"]
+      B2["/patients"]
+      B3["/plans"]
+      B4["/progress"]
+      B5["/health"]
     end
 
     BE --- B1
